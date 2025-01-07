@@ -15,13 +15,22 @@ struct Atom {
     name: String,
     valence: i64,
     lone: i64,
-    bond_count: i64,
     id: i64
 }
 
 impl Atom {
-    fn formal_charge(&self) -> i64{
-        self.valence - self.lone - self.bond_count
+    fn get_bonded_electrons_count(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+        bonds_with.iter().map(|(atom, bond_type)| {
+            match bond_type {
+                BondType::SINGLE => 1,
+                BondType::DOUBLE => 2,
+                BondType::TRIPLE => 3
+            }
+        }).sum()
+    }
+
+    fn formal_charge(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+        self.valence - self.lone - self.get_bonded_electrons_count(&bonds_with)
     }
 }
 
@@ -63,10 +72,6 @@ impl ModelCompound {
             .insert(atom1.clone(), bond);
     }
 
-    fn get_atoms(&self) -> HashSet<&Atom> {
-        self.adjacency_list.keys().collect::<HashSet<&Atom>>()
-    }
-
     fn contains_atom(&self, atom: &Atom) -> bool {
         self.adjacency_list.contains_key(atom)
     }
@@ -82,6 +87,13 @@ impl ModelCompound {
         } else {
             Some(set)
         }
+    }
+
+    fn used_electrons_total(&self) -> i64 {
+        self.adjacency_list.iter()
+            .map(|(atom, map)| {
+                atom.get_bonded_electrons_count(map) + atom.lone
+            }).sum()
     }
 
     fn print_graph(&self) {
@@ -189,8 +201,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
-    let model_compound = build_model_compound(&input_compound).unwrap();
-    model_compound.print_graph();
+    let model_compound = test(&input_compound);
+    dbg!(model_compound.used_electrons_total());
 }
 
 fn parse_input(_args : &[String], valences: &HashMap<&str, i64>, electronegativities: &HashMap<&str, i64>) -> ParsedCompound {
@@ -265,7 +277,7 @@ fn build_model_compound(input_compound: &ParsedCompound) -> Option<ModelCompound
 
     // add all atoms to compound
     input_compound.elements.iter().for_each(|element| {
-        compound.add_atom(&Atom { name: element.name.clone(), valence: element.valence, lone: 0, bond_count: 0, id: element.id });
+        compound.add_atom(&Atom { name: element.name.clone(), valence: element.valence, lone: 0, id: element.id });
     });
 
     // determine bonds
@@ -275,10 +287,11 @@ fn build_model_compound(input_compound: &ParsedCompound) -> Option<ModelCompound
     queue.push_front(compound);
     while !queue.is_empty() {
         let curr = queue.pop_front().unwrap();
+
+        let mut curr_used_electrons_total = 0;
+
         let mut curr_formal_charge_total = 0;
-        curr.get_atoms().iter().for_each(|atom| {
-            curr_formal_charge_total += atom.formal_charge();
-        });
+
         if curr_formal_charge_total == formal_charge_total {
             return Some(curr);
         } else {
@@ -287,6 +300,16 @@ fn build_model_compound(input_compound: &ParsedCompound) -> Option<ModelCompound
     }
 
     None
+}
+
+fn test(input_compound: &ParsedCompound) -> ModelCompound {
+    let mut compound = ModelCompound::new();
+    // add all atoms to compound
+    input_compound.elements.iter().for_each(|element| {
+        compound.add_atom(&Atom { name: element.name.clone(), valence: element.valence, lone: 0, id: element.id });
+    });
+
+    compound
 }
 
 /*
