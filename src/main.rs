@@ -189,7 +189,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
-    let model_compound = build_model_compound(&input_compound);
+    let model_compound = build_model_compound(&input_compound).unwrap();
     model_compound.print_graph();
 }
 
