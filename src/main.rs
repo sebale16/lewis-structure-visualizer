@@ -3,6 +3,7 @@ use std::env;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::rc::Rc;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 struct Element {
@@ -30,7 +31,7 @@ impl Atom {
         }))
     }
 
-    fn get_bonded_electrons_count(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+    fn get_bonded_electrons_count(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         bonds_with.iter().map(|(_, bond_type)| {
             match bond_type {
                 BondType::SINGLE => 1,
@@ -40,15 +41,15 @@ impl Atom {
         }).sum()
     }
 
-    fn formal_charge(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+    fn formal_charge(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         self.valence - self.lone - self.get_bonded_electrons_count(&bonds_with)
     }
 
-    fn electrons_to_octet(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+    fn electrons_to_octet(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         8 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 
-    fn electrons_to_two(&self, bonds_with: &HashMap<Atom, BondType>) -> i64 {
+    fn electrons_to_two(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         2 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 }
@@ -64,229 +65,6 @@ enum BondType {
 struct ParsedCompound {
     elements: HashSet<Element>, // set corresponding to each element
     charge: i64
-}
-
-#[derive(Debug, Clone)]
-struct ModelCompound {
-    adjacency_list: HashMap<Atom, HashMap<Atom, BondType>>
-}
-
-impl ModelCompound {
-    fn new() -> Self {
-        ModelCompound {
-            adjacency_list: HashMap::new()
-        }
-    }
-
-    fn add_atom(&mut self, atom: &Atom) {
-        self.adjacency_list.entry(atom.clone()).or_insert(HashMap::new());
-    }
-
-    // fn remove_bond(&mut self, atom_1_name: &str, atom_1_id: i64, atom_2_name: &str, atom_2_id: i64) -> BondType {
-    //     let mut curr_model = self.adjacency_list.clone();
-    //
-    //     let atom_1 = self.adjacency_list.clone().keys().filter(|a| {
-    //         a.name == atom_1_name && a.id == atom_1_id
-    //     }).next().unwrap().clone();
-    //
-    //     let atom_2 = self.adjacency_list.clone().keys().filter(|a| {
-    //         a.name == atom_2_name && a.id == atom_2_id
-    //     }).next().unwrap().clone();
-    //
-    //     let bond = self.adjacency_list.get(&atom_1).unwrap().get(&atom_2).unwrap();
-    //
-    //     // remove atom_2 from atom_1
-    //     self.adjacency_list.get(&atom_1).unwrap().remove(&atom_2);
-    //
-    //     // get atom_1 bonds
-    //     let atom_1_bonds_or_none = self.adjacency_list.get(&atom_1);
-    //
-    //     // remove atom_1 from atom_2
-    //     self.adjacency_list.get(&atom_2).unwrap().remove(&atom_1);
-    //
-    //     // get atom_2 bonds
-    //     let atom_2_bonds_or_none = self.adjacency_list.get(&atom_1);
-    //
-    //     let mut atom_1_new = atom_1.clone();
-    //     let mut atom_2_new = atom_2.clone();
-    //
-    //     // add electrons back corresponding to bond
-    //     match bond {
-    //         BondType::SINGLE => {
-    //             atom_1_new.lone += 1;
-    //             atom_2_new.lone += 1;
-    //         }
-    //         BondType::DOUBLE => {
-    //             atom_1_new.lone += 2;
-    //             atom_2_new.lone += 2;
-    //         }
-    //         BondType::TRIPLE => {
-    //             atom_1_new.lone += 3;
-    //             atom_2_new.lone += 3;
-    //         }
-    //     }
-    //
-    //     // change atoms that are bonded with atom_1 to show atom_1_new
-    //     match atom_1_bonds_or_none {
-    //         Some(mut atom_1_bonds) => {
-    //             // loop through each atom that is bonded with atom_1, remove old atom_1 and insert atom_1_new with old bond type
-    //             for (atom, bond_type) in atom_1_bonds {
-    //                 self.adjacency_list.get(&atom).unwrap().remove(&atom_1);
-    //                 self.adjacency_list.get(&atom).unwrap().entry(atom_1_new.clone()).insert_entry(bond_type.clone());
-    //             }
-    //         }
-    //         None => {}
-    //     }
-    //
-    //     match atom_2_bonds_or_none {
-    //         Some(mut atom_2_bonds) => {
-    //             // loop through each atom that is bonded with atom_2, remove old atom_2 and insert atom_2_new with old bond type
-    //             for (atom, bond_type) in atom_2_bonds {
-    //                 self.adjacency_list.get(&atom).unwrap().remove(&atom_2);
-    //                 self.adjacency_list.get(&atom).unwrap().entry(atom_2_new.clone()).insert_entry(bond_type.clone());
-    //             }
-    //         }
-    //         None => {}
-    //     }
-    //
-    //     *bond
-    // }
-
-    fn add_bond(&mut self, atom_1_name: &str, atom_1_id: i64, atom_2_name: &str, atom_2_id: i64, bond_type: BondType) -> bool {
-        let mut atom_1 = self.adjacency_list.clone().keys().filter(|a| {
-            a.name == atom_1_name && a.id == atom_1_id
-        }).next().unwrap().clone();
-
-        let mut atom_2 = self.adjacency_list.clone().keys().filter(|a| {
-            a.name == atom_2_name && a.id == atom_2_id
-        }).next().unwrap().clone();
-
-        let bonds_1_or_none = self.adjacency_list.remove(&atom_1);
-        let bonds_2_or_none = self.adjacency_list.remove(&atom_2);
-
-        let atom_1_old = atom_1.clone();
-        let atom_2_old = atom_2.clone();
-
-        let mut bond_allowed = false;
-
-        match bond_type {
-            BondType::SINGLE => {
-                if atom_1.lone > 0 && atom_2.lone > 0 {
-                    bond_allowed = true;
-                    atom_1.lone -= 1;
-                    atom_2.lone -= 1;
-                }
-            }
-            BondType::DOUBLE => {
-                if atom_1.lone > 1 && atom_2.lone > 1 {
-                    bond_allowed = true;
-                    atom_1.lone -= 1;
-                    atom_2.lone -= 1;
-                }
-            }
-            BondType::TRIPLE => {
-                if atom_1.lone > 2 && atom_2.lone > 2 {
-                    bond_allowed = true;
-                    atom_1.lone -= 1;
-                    atom_2.lone -= 1;
-                }
-            }
-        }
-
-        if bond_allowed {
-            match bonds_1_or_none {
-                Some(mut bonds) => {
-
-                    // get bonds with old atom_2
-                    let mut old_bonds = self.adjacency_list.clone();
-                    let filter = old_bonds.iter_mut().filter(|(_, b)| {
-                        b.keys().any(|x| {
-                            x.name == atom_2_old.name && x.id == atom_2_old.id
-                        })
-                    });
-
-                    // add atom_2
-                    bonds.remove(&atom_2_old.clone());
-                    bonds.entry(atom_2.clone()).insert_entry(bond_type);
-                    self.adjacency_list.entry(atom_1.clone()).insert_entry(bonds);
-
-                    // revise old bonds to show updated atom_2
-                    for (atom, bonds_1) in filter {
-                        let bond_old_type = bonds_1.remove(&atom_2_old).unwrap();
-                        bonds_1.entry(atom_2.clone()).insert_entry(bond_old_type);
-                        self.adjacency_list.entry(atom.clone()).insert_entry(bonds_1.clone());
-                    }
-
-                }
-                None => {
-                    self.adjacency_list.entry(atom_1.clone()).or_insert_with(HashMap::new).insert(atom_2.clone(), bond_type);
-                }
-            }
-
-            match bonds_2_or_none {
-                Some(mut bonds) => {
-                    // get bonds with old atom_1
-                    let mut old_bonds = self.adjacency_list.clone();
-                    let filter = old_bonds.iter_mut().filter(|(_, b)| {
-                        b.keys().any(|x| {
-                            x.name == atom_1_old.name && x.id == atom_1_old.id
-                        })
-                    });
-
-                    // add atom_1
-                    bonds.remove(&atom_1_old.clone());
-                    bonds.entry(atom_1.clone()).insert_entry(bond_type);
-                    self.adjacency_list.entry(atom_2.clone()).insert_entry(bonds);
-
-                    // revise old bonds to show updated atom_1
-                    for (atom, bonds) in filter {
-                        let bond_old_type = bonds.remove(&atom_1_old).unwrap();
-                        bonds.entry(atom_1.clone()).insert_entry(bond_old_type);
-                        self.adjacency_list.entry(atom.clone()).insert_entry(bonds.clone());
-                    }
-                }
-                None => {
-                    self.adjacency_list.entry(atom_2.clone()).or_insert_with(HashMap::new).insert(atom_1.clone(), bond_type);
-                }
-            }
-        }
-
-        bond_allowed
-    }
-
-    fn contains_atom(&self, atom: &Atom) -> bool {
-        self.adjacency_list.contains_key(atom)
-    }
-
-    fn get_atoms(& self) -> HashSet<&Atom> {
-        self.adjacency_list.keys().collect()
-    }
-
-    fn neighbors(&self, atom: &Atom) -> Option<HashSet<&Atom>> {
-        let set : HashSet<&Atom> = self.adjacency_list
-            .get(atom)
-            .unwrap()
-            .keys()
-            .collect();
-        if set.is_empty() {
-            None
-        } else {
-            Some(set)
-        }
-    }
-
-    fn used_electrons_total(&self) -> i64 {
-        self.adjacency_list.iter()
-            .map(|(atom, map)| {
-                atom.get_bonded_electrons_count(map) + atom.lone
-            }).sum()
-    }
-
-    fn print_graph(&self) {
-        for (atom, neighbors) in &self.adjacency_list {
-            println!("{:?} -> {:?}", atom, neighbors);
-        }
-    }
 }
 
 type AtomRef = Rc<RefCell<Atom>>;
@@ -306,9 +84,64 @@ impl Model {
     }
 
     fn add_bond(&mut self, atom_1: AtomRef, atom_2: AtomRef, bond: BondType) {
+        let mut is_bond_possible = false;
 
+        {
+            let mut deref_atom_1 = atom_1.borrow_mut();
+            let mut deref_atom_2 = atom_2.borrow_mut();
+
+            match bond {
+                BondType::SINGLE => {
+                    if deref_atom_1.lone > 0 && deref_atom_2.lone > 0 {
+                        is_bond_possible = true;
+                        deref_atom_1.lone -= 1;
+                        deref_atom_2.lone -= 1;
+                    }
+                }
+                BondType::DOUBLE => {
+                    if deref_atom_1.lone > 1 && deref_atom_2.lone > 1 {
+                        is_bond_possible = true;
+                        deref_atom_1.lone -= 2;
+                        deref_atom_2.lone -= 2;
+                    }
+                }
+                BondType::TRIPLE => {
+                    if deref_atom_1.lone > 2 && deref_atom_2.lone > 2 {
+                        is_bond_possible = true;
+                        deref_atom_1.lone -= 3;
+                        deref_atom_2.lone -= 3;
+                    }
+                }
+            }
+        }
+
+        if is_bond_possible {
+            let mut index_of_atom_1 = 0;
+            let mut index_of_atom_2 = 0;
+
+            for i in 0..self.atoms.len() {
+                if self.atoms[i] == atom_1 {
+                    index_of_atom_1 = i;
+                }
+                if self.atoms[i] == atom_2 {
+                    index_of_atom_2 = i;
+                }
+            }
+
+            let mut bonds_of_atom_1 = self.bonds_with.remove(index_of_atom_1);
+            bonds_of_atom_1.push((atom_2, bond));
+            self.bonds_with.insert(index_of_atom_1, bonds_of_atom_1);
+
+            let mut bonds_of_atom_2 = self.bonds_with.remove(index_of_atom_2);
+            bonds_of_atom_2.push((atom_1, bond));
+            self.bonds_with.insert(index_of_atom_2, bonds_of_atom_2);
+        }
+    }
+
+    fn remove_bond(&mut self, atom_1: AtomRef, atom_2: AtomRef) -> BondType {
         let mut index_of_atom_1 = 0;
         let mut index_of_atom_2 = 0;
+
         for i in 0..self.atoms.len() {
             if self.atoms[i] == atom_1 {
                 index_of_atom_1 = i;
@@ -318,13 +151,46 @@ impl Model {
             }
         }
 
+        let mut bond = BondType::SINGLE;
+        let mut bond_found = false;
+
         let mut bonds_of_atom_1 = self.bonds_with.remove(index_of_atom_1);
-        bonds_of_atom_1.push((atom_2, bond));
+        for i in 0..bonds_of_atom_1.iter().len() {
+            if bonds_of_atom_1[i].0 == atom_2 {
+                bond_found = true;
+                bond = bonds_of_atom_1.remove(i).1;
+                break;
+            }
+        }
         self.bonds_with.insert(index_of_atom_1, bonds_of_atom_1);
 
         let mut bonds_of_atom_2 = self.bonds_with.remove(index_of_atom_2);
-        bonds_of_atom_2.push((atom_1, bond));
+        for i in 0..bonds_of_atom_2.iter().len() {
+            if bonds_of_atom_2[i].0 == atom_1 {
+                bonds_of_atom_2.remove(i);
+                break;
+            }
+        }
         self.bonds_with.insert(index_of_atom_2, bonds_of_atom_2);
+
+        if bond_found {
+            match bond {
+                BondType::SINGLE => {
+                    atom_1.borrow_mut().lone += 1;
+                    atom_2.borrow_mut().lone += 1;
+                }
+                BondType::DOUBLE => {
+                    atom_1.borrow_mut().lone += 2;
+                    atom_2.borrow_mut().lone += 2;
+                }
+                BondType::TRIPLE => {
+                    atom_1.borrow_mut().lone += 3;
+                    atom_2.borrow_mut().lone += 3;
+                }
+            }
+        }
+
+        bond
     }
 }
 
@@ -426,8 +292,11 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
-    let model_compound = test(&input_compound);
+    let now = Instant::now();
+    let model_compound = build_model(&input_compound);
     dbg!(&model_compound);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn parse_input(_args : &[String], valences: &HashMap<&str, i64>, electronegativities: &HashMap<&str, i64>) -> ParsedCompound {
@@ -485,107 +354,84 @@ fn parse_input(_args : &[String], valences: &HashMap<&str, i64>, electronegativi
     ParsedCompound { elements, charge }
 }
 
-fn build_model_compound(input_compound: &ParsedCompound) -> Option<ModelCompound> {
-    let mut compound = ModelCompound::new();
+fn build_model(input_compound: &ParsedCompound) -> Model {
+
     let charge = input_compound.charge;
 
-    // count total num of valence electrons
-    let valence_electron_count: i64 = input_compound.elements
-        .iter()
-        .map(|element| element.valence)
-        .sum();
+    let min_electroneg = input_compound.elements.iter()
+        .filter(|x| x.name != "H")
+        .min_by(|a, b| a.electroneg.cmp(&b.electroneg)).unwrap();
 
-    // determine least electronegative atom
-    let min_electroneg = input_compound.elements.iter().min_by(|a, b| a.electroneg.cmp(&b.electroneg)).unwrap();
-    let mut min_atom : Atom = Atom {name: String::new(), valence: 0, lone: 0, id: 0};
+    let mut min_atom: AtomRef = Atom::new("", 0, 0, 0);
+    let mut atoms_vec: Vec<AtomRef> = Vec::new();
 
     // add all atoms to compound
     input_compound.elements.iter().for_each(|element| {
-        let atom : Atom = Atom { name: element.name.clone(), valence: element.valence, lone: element.valence, id: element.id };
-        compound.add_atom(&atom);
+        let atom = Atom { name: element.name.clone(), valence: element.valence, lone: element.valence, id: element.id };
+        let atomref = Rc::new(RefCell::new(atom));
+        atoms_vec.push(atomref.clone());
         if min_electroneg.name == element.name && min_electroneg.id == element.id {
-            min_atom = atom;
+            min_atom = atomref.clone();
         }
     });
 
-    compound.clone().adjacency_list.iter().for_each(|(atom, _)| {
-        if atom.name == min_atom.name && atom.id == min_atom.id {
-            return;
-        } else {
-            compound.add_bond(atom.name.as_str(), atom.id, min_atom.name.as_str(), min_atom.id, BondType::SINGLE);
 
-        }
-    });
+    let atoms_count = atoms_vec.len();
 
-    dbg!(&compound.print_graph());
+    let mut compound = Model::new(atoms_vec);
 
-    // determine bonds
 
-    let mut queue: VecDeque<ModelCompound> = VecDeque::new();
-    queue.push_front(compound);
-    while !queue.is_empty() {
-        let curr = queue.pop_front().unwrap();
-        dbg!(&curr.print_graph());
-        let remaining_electrons = valence_electron_count % 8;
-        let octet_electrons = valence_electron_count / 8;
-
-        if charge == 0 {
-            let mut electrons_to_full_map: HashMap<&Atom, i64> = HashMap::new();
-            curr.adjacency_list.iter().for_each(|(atom, bonds)| {
-                if atom.name == "H" || atom.name == "He" {
-                    electrons_to_full_map.entry(atom).insert_entry(atom.electrons_to_two(bonds));
-                } else {
-                    electrons_to_full_map.entry(atom).insert_entry(atom.electrons_to_octet(bonds));
-                }
-            });
-            if electrons_to_full_map.values().sum::<i64>() == 0 && curr.adjacency_list.iter().map(|(atom, bonds)| {atom.formal_charge(bonds)}).sum::<i64>() == 0 {
-                return Some(curr);
-            } else {
-                curr.clone().adjacency_list.iter().for_each(|(atom, bonds)| {
-                    let mut curr_cloned_1 = curr.clone();
-                    // if bond does not exist yet
-                    curr_cloned_1.clone().get_atoms().iter().for_each(|present_atom| {
-                        match bonds.get(present_atom) {
-                            None => {
-                                if atom.name == present_atom.name && atom.id == present_atom.id {
-                                    return;
-                                } else {
-                                    let mut curr_cloned_2 = curr_cloned_1.clone();
-                                    //curr_cloned_2.remove_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id);
-                                    curr_cloned_2.add_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id, BondType::SINGLE);
-                                    queue.push_front(curr_cloned_2.clone());
-                                }
-                            }
-                            Some(bond) => {
-                                let mut curr_cloned_2 = curr_cloned_1.clone();
-                                if atom.name == present_atom.name && atom.id == present_atom.id {
-                                    return;
-                                } else {
-                                    match bond {
-                                        BondType::SINGLE => {
-                                            //curr_cloned_2.remove_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id);
-                                            curr_cloned_2.add_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id, BondType::DOUBLE);
-                                            queue.push_front(curr_cloned_2.clone());
-                                        }
-                                        BondType::DOUBLE => {
-                                            //curr_cloned_2.remove_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id);
-                                            curr_cloned_2.add_bond(atom.name.as_str(), atom.id, present_atom.name.as_str(), present_atom.id, BondType::TRIPLE);
-                                            queue.push_front(curr_cloned_2.clone());
-                                        }
-                                        BondType::TRIPLE => {}
-                                    }
-                                }
-                            }
-                        }
-                    })
-                })
-            }
-        } else {
-
+    // add bonds between atoms and atom with the least electronegativity
+    for i in 0..atoms_count {
+        if compound.atoms.get(i).unwrap().clone() != min_atom {
+            compound.add_bond(compound.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::SINGLE);
         }
     }
 
-    None
+    let mut queue: VecDeque<Model> = VecDeque::new();
+    queue.push_front(compound.clone());
+    while !queue.is_empty() {
+        let mut curr = queue.pop_front().unwrap().clone();
+
+        let mut electrons_to_full_map: HashMap<Atom, i64> = HashMap::new();
+        let mut formal_charges: HashMap<Atom, i64> = HashMap::new();
+
+        for i in 0..curr.atoms.len() {
+            formal_charges.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().formal_charge(&curr.bonds_with[i].clone()));
+
+            if curr.atoms[i] != min_atom {
+                if curr.atoms[i].borrow().name == "H" || curr.atoms[i].borrow().name == "He" {
+                    electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_two(&curr.bonds_with[i].clone()));
+                } else {
+                    electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_octet(&curr.bonds_with[i].clone()));
+                }
+            }
+        }
+
+        if electrons_to_full_map.values().sum::<i64>() == 0 && formal_charges.values().sum::<i64>() == charge {
+            return curr;
+        } else {
+            for i in 0..atoms_count {
+                let atom = curr.atoms.get(i).unwrap().clone();
+                if atom != min_atom {
+                    let bond = curr.remove_bond(atom, min_atom.clone());
+                    match bond {
+                        BondType::SINGLE => {
+                            curr.add_bond(curr.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::DOUBLE);
+                            queue.push_front(curr.clone());
+                        }
+                        BondType::DOUBLE => {
+                            curr.add_bond(curr.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::TRIPLE);
+                            queue.push_front(curr.clone());
+                        }
+                        BondType::TRIPLE => {}
+                    }
+                }
+            }
+        }
+    }
+
+    compound
 }
 
 fn test(input_compound: &ParsedCompound) -> Model {
@@ -615,15 +461,9 @@ fn test(input_compound: &ParsedCompound) -> Model {
         if *i == min_atom.clone() {
             continue;
         } else {
-            compound.add_bond(i.clone(), min_atom.clone(), BondType::TRIPLE);
+            compound.add_bond(i.clone(), min_atom.clone(), BondType::DOUBLE);
         }
     }
-
-    // compound.clone().adjacency_list.iter().for_each(|(x, y)| {
-    //     dbg!(&x.name, &x.id);
-    //     dbg!(&x.electrons_to_octet(y));
-    //     dbg!(&x.formal_charge(y));
-    // });
 
     compound
 }
