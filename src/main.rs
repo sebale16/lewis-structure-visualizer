@@ -38,7 +38,7 @@ impl Atom {
                 BondType::DOUBLE => 2,
                 BondType::TRIPLE => 3
             }
-        }).sum()
+        }).sum::<i64>()
     }
 
     fn formal_charge(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
@@ -47,6 +47,14 @@ impl Atom {
 
     fn electrons_to_octet(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         8 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
+    }
+
+    fn electrons_to_six(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
+        6 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
+    }
+
+    fn electrons_to_four(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
+        4 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 
     fn electrons_to_two(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
@@ -94,22 +102,16 @@ impl Model {
                 BondType::SINGLE => {
                     if deref_atom_1.lone > 0 && deref_atom_2.lone > 0 {
                         is_bond_possible = true;
-                        deref_atom_1.lone -= 1;
-                        deref_atom_2.lone -= 1;
                     }
                 }
                 BondType::DOUBLE => {
                     if deref_atom_1.lone > 1 && deref_atom_2.lone > 1 {
                         is_bond_possible = true;
-                        deref_atom_1.lone -= 2;
-                        deref_atom_2.lone -= 2;
                     }
                 }
                 BondType::TRIPLE => {
                     if deref_atom_1.lone > 2 && deref_atom_2.lone > 2 {
                         is_bond_possible = true;
-                        deref_atom_1.lone -= 3;
-                        deref_atom_2.lone -= 3;
                     }
                 }
             }
@@ -162,7 +164,9 @@ impl Model {
                 break;
             }
         }
-        self.bonds_with.insert(index_of_atom_1, bonds_of_atom_1);
+        if bond_found {
+            self.bonds_with.insert(index_of_atom_1, bonds_of_atom_1);
+        }
 
         let mut bonds_of_atom_2 = self.bonds_with.remove(index_of_atom_2);
         for i in 0..bonds_of_atom_2.iter().len() {
@@ -171,26 +175,19 @@ impl Model {
                 break;
             }
         }
-        self.bonds_with.insert(index_of_atom_2, bonds_of_atom_2);
-
         if bond_found {
-            match bond {
-                BondType::SINGLE => {
-                    atom_1.borrow_mut().lone += 1;
-                    atom_2.borrow_mut().lone += 1;
-                }
-                BondType::DOUBLE => {
-                    atom_1.borrow_mut().lone += 2;
-                    atom_2.borrow_mut().lone += 2;
-                }
-                BondType::TRIPLE => {
-                    atom_1.borrow_mut().lone += 3;
-                    atom_2.borrow_mut().lone += 3;
-                }
-            }
+            self.bonds_with.insert(index_of_atom_2, bonds_of_atom_2);
         }
 
         bond
+    }
+
+    fn print_model(&self) {
+        for i in 0..self.atoms.len() {
+            println!("{:?} -> {:?}", self.atoms[i].borrow(), self.bonds_with[i].iter()
+                .map(|(a, b)| {(a.borrow().clone(), *b)})
+                .collect::<Vec<(Atom, BondType)>>());
+        }
     }
 }
 
@@ -289,12 +286,59 @@ fn main() {
         ("Ra", 90),
     ]);
 
+    let can_expand_octet: HashMap<&str, bool> = HashMap::from([
+        ("H", false),
+        ("He", false),
+        ("Li", false),
+        ("Be", false),
+        ("B", false),
+        ("C", false),
+        ("N", false),
+        ("O", false),
+        ("F", false),
+        ("Ne", false),
+        ("Na", false),
+        ("Mg", false),
+        ("Al", false),
+        ("Si", true),
+        ("P", true),
+        ("S", true),
+        ("Cl", true),
+        ("Ar", false),
+        ("K", false),
+        ("Ca", false),
+        ("Ga", false),
+        ("Ge", true),
+        ("As", true),
+        ("Se", true),
+        ("Br", true),
+        ("Kr", true),
+        ("Rb", false),
+        ("Sr", false),
+        ("In", false),
+        ("Sn", true),
+        ("Sb", true),
+        ("Te", true),
+        ("I", true),
+        ("Xe", true),
+        ("Cs", false),
+        ("Ba", false),
+        ("Tl", false),
+        ("Pb", true),
+        ("Bi", true),
+        ("Po", true),
+        ("At", true),
+        ("Rn", true),
+        ("Fr", false),
+        ("Ra", false),
+    ]);
+
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
     let now = Instant::now();
-    let model_compound = build_model(&input_compound);
-    dbg!(&model_compound);
+    let model_compound = build_model(&input_compound, can_expand_octet);
+    model_compound.print_model();
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
 }
@@ -354,8 +398,8 @@ fn parse_input(_args : &[String], valences: &HashMap<&str, i64>, electronegativi
     ParsedCompound { elements, charge }
 }
 
-fn build_model(input_compound: &ParsedCompound) -> Model {
-
+fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>) -> Model {
+    let mut model_not_found = false;
     let charge = input_compound.charge;
 
     let min_electroneg = input_compound.elements.iter()
@@ -375,23 +419,37 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         }
     });
 
-
     let atoms_count = atoms_vec.len();
 
     let mut compound = Model::new(atoms_vec);
-
 
     // add bonds between atoms and atom with the least electronegativity
     for i in 0..atoms_count {
         if compound.atoms.get(i).unwrap().clone() != min_atom {
             compound.add_bond(compound.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::SINGLE);
+
+            // recalculate lone e amt after initial bond
+            for i in 0..compound.atoms.iter().len() {
+                let mut atom = compound.atoms[i].borrow_mut();
+                atom.lone = atom.valence - atom.get_bonded_electrons_count(&compound.bonds_with[i]);
+            }
         }
     }
 
     let mut queue: VecDeque<Model> = VecDeque::new();
     queue.push_front(compound.clone());
-    while !queue.is_empty() {
-        let mut curr = queue.pop_front().unwrap().clone();
+    while queue.len() > 0 {
+
+        let mut curr = queue.pop_front().unwrap();
+
+        // break if no more bonds
+        if curr.bonds_with.iter().all(|x1| x1.is_empty()) { model_not_found = true; return curr; }
+
+        // after bonding
+        for i in 0..atoms_count {
+            let mut atom = curr.atoms[i].borrow_mut();
+            atom.lone = atom.valence - atom.get_bonded_electrons_count(&curr.bonds_with[i]);
+        }
 
         let mut electrons_to_full_map: HashMap<Atom, i64> = HashMap::new();
         let mut formal_charges: HashMap<Atom, i64> = HashMap::new();
@@ -399,12 +457,14 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         for i in 0..curr.atoms.len() {
             formal_charges.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().formal_charge(&curr.bonds_with[i].clone()));
 
-            if curr.atoms[i] != min_atom {
-                if curr.atoms[i].borrow().name == "H" || curr.atoms[i].borrow().name == "He" {
-                    electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_two(&curr.bonds_with[i].clone()));
-                } else {
-                    electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_octet(&curr.bonds_with[i].clone()));
-                }
+            if curr.atoms[i].borrow().name == "H" || curr.atoms[i].borrow().name == "He" {
+                electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_two(&curr.bonds_with[i].clone()));
+            } else if curr.atoms[i].borrow().name == "Be" {
+                electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_four(&curr.bonds_with[i].clone()));
+            } else if curr.atoms[i].borrow().name == "Al" || curr.atoms[i].borrow().name == "B" {
+                electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_six(&curr.bonds_with[i].clone()));
+            } else if !(can_expand.get(&curr.atoms[i].borrow().name.as_str()).unwrap().clone() && curr.atoms[i] == min_atom) {
+                electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_octet(&curr.bonds_with[i].clone()));
             }
         }
 
@@ -414,18 +474,26 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
             for i in 0..atoms_count {
                 let atom = curr.atoms.get(i).unwrap().clone();
                 if atom != min_atom {
-                    let bond = curr.remove_bond(atom, min_atom.clone());
+                    let bond = curr.remove_bond(atom.clone(), min_atom.clone());
+
+                    dbg!(&curr.print_model());
+                    // recalculate lone electron amt before bonding
+                    for i in 0..atoms_count {
+                        let mut atom = curr.atoms[i].borrow_mut();
+                        atom.lone = atom.valence - atom.get_bonded_electrons_count(&curr.bonds_with[i]);
+                    }
+
                     match bond {
                         BondType::SINGLE => {
-                            curr.add_bond(curr.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::DOUBLE);
-                            queue.push_front(curr.clone());
+                            curr.add_bond(atom.clone(), min_atom.clone(), BondType::DOUBLE);
                         }
                         BondType::DOUBLE => {
-                            curr.add_bond(curr.atoms.get(i).unwrap().clone(), min_atom.clone(), BondType::TRIPLE);
-                            queue.push_front(curr.clone());
+                            curr.add_bond(atom.clone(), min_atom.clone(), BondType::TRIPLE);
                         }
                         BondType::TRIPLE => {}
                     }
+
+                    queue.push_back(curr.clone());
                 }
             }
         }
