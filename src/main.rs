@@ -5,7 +5,6 @@ use std::env;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::rc::Rc;
-use std::time::Instant;
 use crate::display::display;
 use itertools::Itertools;
 
@@ -355,13 +354,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
-    let now = Instant::now();
     let model_compound = build_model(&input_compound, can_expand_octet, valences);
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
     display(model_compound);
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativities: &HashMap<&str, u64>) -> ParsedCompound {
