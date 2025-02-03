@@ -353,7 +353,10 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
-
+    if (input_compound.elements.iter().map(|x| x.valence).sum::<u64>() as i64 - input_compound.charge) % 8 != 0 || input_compound.charge.abs() > 7 {
+        panic!("Cannot create a stable compound!");
+    }
+    
     let model_compound = build_model(&input_compound, can_expand_octet, valences);
     display(model_compound);
 }
@@ -406,7 +409,9 @@ fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativi
             }
             let ele = Element {
                 name: name.clone(),
-                valence: *valences.get(name.as_str()).unwrap(),
+                valence: *valences.get(name.as_str()).expect(&format!("{} element not \
+                compatible, does not exist, or incorrect input format! Use a capital letter to denote \
+                the start of an element's name and lower case letters for the second letter.", name)),
                 electroneg: *electronegativities.get(name.as_str()).unwrap(),
                 id: i
             };
@@ -531,7 +536,7 @@ fn determine_formal_charge_distribution(models: Vec<Model>, valences: HashMap<&s
         }
     }
 
-    models[min_abs_formal_charge_index].clone()
+    models.get(min_abs_formal_charge_index).expect("No model found!").clone()
 }
 
 fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>, valence_map: HashMap<&str, u64>) -> Model {
