@@ -1,8 +1,9 @@
 mod display;
 
 use std::cell::RefCell;
-use std::env;
+use std::{env, io};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
 use crate::display::display;
@@ -13,6 +14,7 @@ struct Element {
     name: String,
     valence: u64,
     electroneg: u64,
+    config: Vec<String>,
     id: u64
 }
 
@@ -73,8 +75,20 @@ enum BondType {
     TRIPLE
 }
 
+enum Hybridization {
+    SP,
+    SP2,
+    SP3,
+    SP2D,
+    SP3D,
+    SP3D2,
+    SP3D3,
+    SP3D4,
+    SP3D5,
+}
+
 struct ParsedCompound {
-    elements: Vec<Element>, // set corresponding to each element
+    elements: Vec<Element>,
     charge: i64
 }
 
@@ -211,6 +225,12 @@ impl Model {
 
 
 fn main() {
+
+    let file = File::open("data/data.csv").unwrap();
+    let mut rdr = csv::Reader::from_reader(file);
+    for result in rdr.records() {
+        println!("{:?}", result.unwrap());
+    }
 
     let valences: HashMap<&str, u64> = HashMap::from([
         ("H ", 1),  // Hydrogen
@@ -361,10 +381,14 @@ fn main() {
     display(model_compound);
 }
 
-fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativities: &HashMap<&str, u64>) -> ParsedCompound {
-    let charge: i64 = _args[2].clone().parse().unwrap();
+fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element> {
 
-    let inputted_compound = _args[1].clone();
+}
+
+fn parse_input(args : &[String], valences: &HashMap<&str, u64>, electronegativities: &HashMap<&str, u64>) -> ParsedCompound {
+    let charge: i64 = args[2].clone().parse().unwrap();
+
+    let inputted_compound = args[1].clone();
 
     let mut counts: Vec<u64> = vec![];
 
