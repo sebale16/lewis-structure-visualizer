@@ -21,12 +21,12 @@ struct Element {
 struct Atom {
     name: String,
     valence: u64,
-    lone: u64,
+    lone: i64,
     id: u64
 }
 
 impl Atom {
-    fn new(name: &str, valence: u64, lone: u64, id: u64) -> AtomRef {
+    fn new(name: &str, valence: u64, lone: i64, id: u64) -> AtomRef {
         Rc::new(RefCell::new(Atom {
             name: name.to_string(),
             valence,
@@ -45,24 +45,24 @@ impl Atom {
         }).sum::<i64>()
     }
 
-    fn formal_charge(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
-        self.valence as i64 - self.lone as i64 - self.get_bonded_electrons_count(&bonds_with)
+    fn formal_charge(&self, valence_list: &HashMap<&str, u64>, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
+        *valence_list.get(self.name.as_str()).unwrap() as i64 - self.lone - self.get_bonded_electrons_count(&bonds_with)
     }
 
     fn electrons_to_octet(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
-        8 - self.lone as i64 - self.get_bonded_electrons_count(&bonds_with) * 2
+        8 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 
     fn electrons_to_six(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
-        6 - self.lone as i64 - self.get_bonded_electrons_count(&bonds_with) * 2
+        6 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 
     fn electrons_to_four(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
-        4 - self.lone as i64 - self.get_bonded_electrons_count(&bonds_with) * 2
+        4 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 
     fn electrons_to_two(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
-        2 - self.lone as i64 - self.get_bonded_electrons_count(&bonds_with) * 2
+        2 - self.lone - self.get_bonded_electrons_count(&bonds_with) * 2
     }
 }
 
@@ -197,7 +197,7 @@ impl Model {
     fn recalculate_lones(&mut self) {
         for i in 0..self.atoms.iter().len() {
             let mut atom = self.atoms[i].borrow_mut();
-            atom.lone = atom.valence - atom.get_bonded_electrons_count(&self.bonds_with[i]) as u64;
+            atom.lone = atom.valence as i64 - atom.get_bonded_electrons_count(&self.bonds_with[i]);
         }
     }
 
@@ -356,11 +356,12 @@ fn main() {
     let input_compound = parse_input(&args, &valences, &electronegativities);
 
     let now = Instant::now();
-    let model_compound = build_model(&input_compound, can_expand_octet);
-    model_compound.print_model();
+    let model_compound = build_model(&input_compound, can_expand_octet, valences);
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     display(model_compound);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativities: &HashMap<&str, u64>) -> ParsedCompound {
@@ -424,56 +425,122 @@ fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativi
 
 fn distribute_charge(charge: i64, atoms_count: usize) -> Vec<Vec<i64>> {
     let abs_charge = charge.abs();
+
     let mut charge_distributions = vec![];
+
+    let mut charge_0_dists = vec![];
+    let mut charge_non_0_dists = vec![];
 
     // ex: charge = 0, atoms_count = 4, central_atom_index = 0
     // output = [-1, 1, 0, 0], [-1, 0, 1, 0], [-1, 0, 0, 1]
     //          [-2, 1, 1, 0], [-2, 1, 0, 1], [-2, 0, 1, 1], [-2, 2, 0, 0], [-2, 0, 2, 0], [-2, 0, 0, 2]
 
-    if charge == 0 {
-        if atoms_count == 2 {
-            charge_distributions.push(vec![-1, 1]);
-            charge_distributions.push(vec![1, -1]);
-            charge_distributions.push(vec![2, -2]);
-            charge_distributions.push(vec![-2, 2]);
-        } else {
-            for i in 1..=3 {
-                let mut curr_distribution_minus_first: Vec<i64> = vec![0; atoms_count - 1];
-                if i == 1 {
-                    curr_distribution_minus_first[0] = 1;
-                } else if i == 2 {
-                    curr_distribution_minus_first[0] = 1;
-                    curr_distribution_minus_first[1] = 1;
-                } else if i == 3 {
-                    curr_distribution_minus_first[0] = 2;
+    if atoms_count == 2 {
+        charge_0_dists.push(vec![-1, 1]);
+        charge_0_dists.push(vec![1, -1]);
+        charge_0_dists.push(vec![2, -2]);
+        charge_0_dists.push(vec![-2, 2]);
+    } else {
+        for i in 1..=3 {
+            let mut curr_distribution_minus_first = vec![0i64; atoms_count - 1];
+            if i == 1 {
+                curr_distribution_minus_first[0] = 1;
+            } else if i == 2 {
+                curr_distribution_minus_first[0] = 1;
+                curr_distribution_minus_first[1] = 1;
+            } else if i == 3 {
+                curr_distribution_minus_first[0] = 2;
+            }
+            let curr_dist_minus_first_iter = curr_distribution_minus_first.iter();
+            let perms = curr_dist_minus_first_iter.permutations(atoms_count - 1);
+            let perms_as_set = perms.collect::<HashSet<_>>();
+            for perm in perms_as_set {
+                let mut curr_dist: Vec<i64> = perm.iter().map(|x| **x).collect();
+                curr_dist.insert(0, -std::cmp::min(i, 2));
+                charge_0_dists.push(curr_dist);
+            }
+        }
+    }
+
+    if charge != 0 {
+        // ex: charge = -2, atoms_count = 4
+        // output = [2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [0, 0, 0, 2]
+        //          [1, 1, 0, 0], [1, 0, 1, 0], [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 0, 1], [0, 0, 1, 1]
+        // 10 vecs
+
+        // ex: charge = -3, atoms_count = 4
+        // output = [3, 0, 0, 0], [0, 3, 0, 0], [0, 0, 3, 0], [0, 0, 0, 3]
+        //          [2, 1, 0, 0], [2, 0, 1, 0], [2, 0, 0, 1], [1, 2, 0, 0], [0, 2, 1, 0], [0, 2, 0, 1], [1, 0, 2, 0], [0, 1, 2, 0], [0, 0, 2, 1], [1, 0, 0, 2], [0, 1, 0, 2], [0, 0, 1, 2],
+        //          [1, 1, 1, 0], [1, 1, 0, 1], [1, 0, 1, 1], [0, 1, 1, 1]
+        // 20 vecs
+
+        for i in 0..abs_charge {
+            let mut v = vec![0i64; atoms_count];
+            let mut count = abs_charge - i;
+            let mut sum = 0;
+            let mut index = 0;
+
+            while sum < abs_charge {
+                v[index] = count;
+                sum += count;
+                index += 1;
+                if count != 1 {
+                    count -= 1;
                 }
-                let curr_dist_minus_first_iter = curr_distribution_minus_first.iter();
-                let perms = curr_dist_minus_first_iter.permutations(atoms_count - 1);
-                let perms_as_set = perms.collect::<HashSet<_>>();
-                for perm in perms_as_set {
-                    let mut curr_dist: Vec<i64> = perm.iter().map(|x| **x).collect();
-                    curr_dist.insert(0, -std::cmp::min(i, 2));
-                    charge_distributions.push(curr_dist);
+            }
+
+            let perms_set = v.iter().permutations(atoms_count).collect::<HashSet<Vec<_>>>();
+
+            for perm in perms_set {
+                if charge > 0 {
+                    let curr_dist: Vec<i64> = perm.iter().map(|x| -**x).collect();
+                    charge_non_0_dists.push(curr_dist);
+                } else {
+                    let curr_dist: Vec<i64> = perm.iter().map(|x| **x).collect();
+                    charge_non_0_dists.push(curr_dist);
                 }
             }
         }
     }
 
-    // ex: charge = -2, atoms_count = 4
-    // output = [2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [0, 0, 0, 2]
-    //          [1, 1, 0, 0], [1, 0, 1, 0], [1, 0, 0, 1], [0, 1, 1, 0], [0, 1, 0, 1], [0, 0, 1, 1]
-    // 10 vecs
+    if charge_non_0_dists.len() > 0 {
+        charge_distributions = charge_0_dists.iter()
+            .flat_map(|a| charge_non_0_dists.iter().map(move |b| a.iter().zip(b.iter()).map(|(x, y)| x+y).collect()))
+            .collect();
+        for i in charge_non_0_dists.iter() {
+            charge_distributions.insert(0, i.clone());
+        }
+    } else {
+        charge_distributions = charge_0_dists;
+        charge_distributions.insert(0, vec![0i64; atoms_count]);
+    }
 
-    // ex: charge = -3, atoms_count = 4
-    // output = [3, 0, 0, 0], [0, 3, 0, 0], [0, 0, 3, 0], [0, 0, 0, 3]
-    //          [2, 1, 0, 0], [2, 0, 1, 0], [2, 0, 0, 1], [1, 2, 0, 0], [0, 2, 1, 0], [0, 2, 0, 1], [1, 0, 2, 0], [0, 1, 2, 0], [0, 0, 2, 1], [1, 0, 0, 2], [0, 1, 0, 2], [0, 0, 1, 2],
-    //          [1, 1, 1, 0], [1, 1, 0, 1], [1, 0, 1, 1], [0, 1, 1, 1]
-    // 20 vecs
+
 
     charge_distributions
 }
 
-fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>) -> Model {
+fn determine_formal_charge_distribution(models: Vec<Model>, valences: HashMap<&str, u64>) -> Model {
+    let mut min_abs_formal_charge_index = 0;
+    let mut min_abs_formal_charge = 8;
+
+    for i in 0..models.len() {
+        let mut curr_model = models[i].clone();
+        curr_model.recalculate_lones();
+        let mut curr_model_formal = 0;
+        for j in 0..curr_model.atoms.len() {
+            curr_model_formal += curr_model.atoms[j].borrow().formal_charge(&valences, &curr_model.bonds_with[j]).abs();
+        }
+        if curr_model_formal < min_abs_formal_charge {
+            min_abs_formal_charge = curr_model_formal;
+            min_abs_formal_charge_index = i;
+        }
+    }
+
+    models[min_abs_formal_charge_index].clone()
+}
+
+fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>, valence_map: HashMap<&str, u64>) -> Model {
     let charge = input_compound.charge;
 
     let min_electroneg = input_compound.elements.iter()
@@ -487,119 +554,44 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>)
 
     let atoms_count = input_compound.elements.len();
 
-    if charge == 0 {
-        let charge_distributions = distribute_charge(charge, atoms_count);
-        dbg!(&charge_distributions);
+    let charge_distributions = distribute_charge(charge, atoms_count);
 
-        for i in 0..charge_distributions.len() {
-            let mut atoms_vec: Vec<AtomRef> = vec![];
+    for i in 0..charge_distributions.len() {
+        let mut atoms_vec: Vec<AtomRef> = vec![];
 
-            for j in 0..input_compound.elements.iter().len() {
-                let element = input_compound.elements[j].clone();
-                let atom = Atom {
-                    name: element.name.clone(),
-                    valence: (element.valence as i64 + charge_distributions[i][j]) as u64,
-                    lone: (element.valence as i64 + charge_distributions[i][j]) as u64,
-                    id: element.id
-                };
-                let atomref = Rc::new(RefCell::new(atom));
-                if min_electroneg.name == element.name && min_electroneg.id == element.id {
-                    central_atoms.push(atomref.clone());
-                    atoms_vec.insert(0, atomref.clone());
-                } else {
-                    atoms_vec.push(atomref.clone());
-                }
-            }
+        let mut charge_dist_cloned = charge_distributions[i].clone();
 
-            compounds_vec.push(Model::new(atoms_vec.clone(), i));
-        }
-
-    } else {
-        let abs_charge = charge.abs() as u64;
-
-        // distribute abs_charge on each atom
-        for i in 0..atoms_count {
-            let mut atoms_vec: Vec<AtomRef> = Vec::new();
-
-            for j in 0..atoms_count {
-                if i == j {
-                    let mut atomref = Atom::new("", 0, 0, 0);
-                    if charge.is_positive() {
-                        let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence - abs_charge, lone: input_compound.elements[j].valence - abs_charge, id: input_compound.elements[j].id };
-                        atomref = Rc::new(RefCell::new(atom));
-                    } else if charge.is_negative() {
-                        let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence + abs_charge, lone: input_compound.elements[j].valence + abs_charge, id: input_compound.elements[j].id };
-                        atomref = Rc::new(RefCell::new(atom));
-                    }
-                    atoms_vec.push(atomref.clone());
-                    if min_electroneg.name == input_compound.elements[j].name && min_electroneg.id == input_compound.elements[j].id {
-                        central_atoms.push(atomref.clone());
-                    }
-                } else {
-                    let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence, lone: input_compound.elements[j].valence, id: input_compound.elements[j].id };
-                    let mut atomref = Rc::new(RefCell::new(atom));
-                    atoms_vec.push(atomref.clone());
-                    if min_electroneg.name == input_compound.elements[j].name && min_electroneg.id == input_compound.elements[j].id {
-                        central_atoms.push(atomref.clone());
-                    }
-                }
-            }
-            compounds_vec.push(Model::new(atoms_vec.clone(), i));
-        }
-
-        let central_atoms_size = central_atoms.len();
-
-        // distribute split charge
-        for i in 1..=abs_charge.div_ceil(2) {
-
-            for j in 0..atoms_count {
-                let mut atoms_vec: Vec<AtomRef> = Vec::new();
-
-                let mut left_over_charge = abs_charge.div_ceil(2) - i;
-
-                for k in 0..atoms_count {
-                    if j == k {
-                        let mut atomref = Atom::new("", 0, 0, 0);
-                        if charge.is_positive() {
-                            let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence - i, lone: input_compound.elements[j].valence - i, id: input_compound.elements[j].id };
-                            atomref = Rc::new(RefCell::new(atom));
-                        } else if charge.is_negative() {
-                            let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence + i, lone: input_compound.elements[j].valence + i, id: input_compound.elements[j].id };
-                            atomref = Rc::new(RefCell::new(atom));
-                        }
-                        atoms_vec.push(atomref.clone());
-                        if min_electroneg.name == input_compound.elements[j].name && min_electroneg.id == input_compound.elements[j].id {
-                            central_atoms.push(atomref.clone());
-                        }
-                    } else {
-                        let mut atomref = Atom::new("", 0, 0, 0);
-                        if charge.is_positive() {
-                            let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence - left_over_charge, lone: input_compound.elements[j].valence - left_over_charge, id: input_compound.elements[j].id };
-                            atomref = Rc::new(RefCell::new(atom));
-                        } else if charge.is_negative() {
-                            let atom = Atom { name: input_compound.elements[j].name.clone(), valence: input_compound.elements[j].valence + left_over_charge, lone: input_compound.elements[j].valence + left_over_charge, id: input_compound.elements[j].id };
-                            atomref = Rc::new(RefCell::new(atom));
-                        }
-                        atoms_vec.push(atomref.clone());
-                        if min_electroneg.name == input_compound.elements[j].name && min_electroneg.id == input_compound.elements[j].id {
-                            central_atoms.push(atomref.clone());
-                        }
-                        if left_over_charge != 0 {
-                            left_over_charge -= 1;
-                        }
-                    }
-                    compounds_vec.push(Model::new(atoms_vec.clone(), central_atoms_size + i as usize - 1));
-
+        for i in 0..input_compound.elements.iter().len() {
+            if input_compound.elements[i].name == "H " || input_compound.elements[i].name == "He" || input_compound.elements[i].name == "Be" {
+                if charge_dist_cloned[i] != 0 {
+                    charge_dist_cloned = vec![0; atoms_count];
                 }
             }
         }
+
+        for j in 0..input_compound.elements.iter().len() {
+            let element = input_compound.elements[j].clone();
+
+            let atom = Atom {
+                name: element.name.clone(),
+                valence: (element.valence as i64 + charge_dist_cloned[j]) as u64,
+                lone: element.valence as i64 + charge_dist_cloned[j],
+                id: element.id
+            };
+
+            let atomref = Rc::new(RefCell::new(atom));
+            if min_electroneg.name == element.name && min_electroneg.id == element.id {
+                central_atoms.push(atomref.clone());
+                atoms_vec.insert(0, atomref.clone());
+            } else {
+                atoms_vec.push(atomref.clone());
+            }
+        }
+
+        compounds_vec.push(Model::new(atoms_vec.clone(), i));
     }
 
-    dbg!(&central_atoms);
-
     let mut queue: VecDeque<Model> = VecDeque::new();
-
-    dbg!(&compounds_vec);
 
     for i in 0..compounds_vec.len() {
         let central_atom = central_atoms[i].clone();
@@ -607,15 +599,17 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>)
         for j in 0..atoms_count {
             let atomref = compounds_vec[i].atoms.get(j).unwrap().clone();
             if !central_atoms.contains(&atomref) {
-                compounds_vec[i].add_bond(atomref, central_atom.clone(), BondType::SINGLE);
+                compounds_vec[i].add_bond(atomref, central_atom.clone(), BondType::SINGLE).unwrap();
             }
         }
 
-        dbg!(&compounds_vec[i].print_model());
-
-        queue.push_front(compounds_vec[i].clone());
+        compounds_vec[i].recalculate_lones();
+        if compounds_vec[i].atoms.iter().all(|x| x.borrow().lone >= 0) {
+            queue.push_front(compounds_vec[i].clone());
+        }
     }
 
+    let mut fitting_models: Vec<Model> = vec![];
 
     while queue.len() > 0 {
 
@@ -624,29 +618,22 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>)
 
         // after bonding
         curr.recalculate_lones();
-        dbg!(&curr.print_model());
-
         let mut electrons_to_full_map: HashMap<Atom, i64> = HashMap::new();
-        let mut formal_charges: HashMap<Atom, i64> = HashMap::new();
 
         for i in 0..curr.atoms.len() {
-            formal_charges.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().formal_charge(&curr.bonds_with[i].clone()));
-
             if curr.atoms[i].borrow().name == "H " || curr.atoms[i].borrow().name == "He" {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_two(&curr.bonds_with[i].clone()));
-            } else if curr.atoms[i].borrow().name == "Be" {
+            } else if curr.atoms[i].borrow().name == "Be" && atoms_count == 3 {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_four(&curr.bonds_with[i].clone()));
-            } else if curr.atoms[i].borrow().name == "Al" || curr.atoms[i].borrow().name == "B " {
+            } else if curr.atoms[i].borrow().name == "Al" || curr.atoms[i].borrow().name == "B " && atoms_count == 4 {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_six(&curr.bonds_with[i].clone()));
-            } else if !(can_expand.get(&curr.atoms[i].borrow().name.as_str()).unwrap().clone() && curr.atoms[i] == new_central_atom) {
+            } else if !can_expand.get(&curr.atoms[i].borrow().name.as_str()).unwrap().clone() || !curr.atoms[i].borrow().eq(&new_central_atom.borrow()) {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_octet(&curr.bonds_with[i].clone()));
             }
         }
 
-        dbg!(&formal_charges.values().sum::<i64>());
-
-        if electrons_to_full_map.values().all(|&x| x == 0) && formal_charges.values().sum::<i64>() == 0 {
-            return curr;
+        if electrons_to_full_map.values().all(|&x| x == 0)  {
+            fitting_models.push(curr);
         } else {
             for i in 0..atoms_count {
                 let atom = curr.atoms.get(i).unwrap().clone();
@@ -662,13 +649,13 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>)
                         BondType::SINGLE => {
                             match cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::DOUBLE) {
                                 Ok(_) => { queue.push_back(cloned_curr.clone()); }
-                                Err(_) => { cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::SINGLE); }
+                                Err(_) => { cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::SINGLE).unwrap(); }
                             }
                         }
                         BondType::DOUBLE => {
                             match cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::TRIPLE) {
                                 Ok(_) => { queue.push_back(cloned_curr.clone()); }
-                                Err(_) => { cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::DOUBLE); }
+                                Err(_) => { cloned_curr.add_bond(atom.clone(), new_central_atom.clone(), BondType::DOUBLE).unwrap(); }
                             }
                         }
                         BondType::TRIPLE => {}
@@ -678,40 +665,5 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>)
             }
         }
     }
-
-    compounds_vec[0].clone()
-}
-
-fn test(input_compound: &ParsedCompound) -> Model {
-
-    let min_electroneg = input_compound.elements.iter().filter(|x| x.name != "H ").min_by(|a, b| a.electroneg.cmp(&b.electroneg)).unwrap();
-    let mut min_atom: AtomRef = Atom::new("", 0, 0, 0);
-    let mut atoms_vec: Vec<AtomRef> = Vec::new();
-
-    // add all atoms to compound
-    input_compound.elements.iter().for_each(|element| {
-        let atom = Atom { name: element.name.clone(), valence: element.valence, lone: element.valence, id: element.id };
-        let atomref = Rc::new(RefCell::new(atom.clone()));
-        atoms_vec.push(atomref.clone());
-        if min_electroneg.name == element.name && min_electroneg.id == element.id {
-            min_atom = atomref.clone();
-        }
-    });
-
-    dbg!(&atoms_vec.len());
-
-    let mut compound = Model::new(atoms_vec, 0);
-
-
-    let atoms = compound.atoms.clone();
-
-    for i in atoms.iter() {
-        if *i == min_atom.clone() {
-            continue;
-        } else {
-            compound.add_bond(i.clone(), min_atom.clone(), BondType::DOUBLE);
-        }
-    }
-
-    compound
+    determine_formal_charge_distribution(fitting_models, valence_map)
 }
