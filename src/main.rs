@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
+use csv::Reader;
 use crate::display::display;
 use itertools::Itertools;
 
@@ -23,19 +24,13 @@ struct Atom {
     name: String,
     valence: u64,
     lone: i64,
+    hybridization: Hybridization,
+    sp_orbital_count: u8,
+    p_orbital_count: u8,
     id: u64
 }
 
 impl Atom {
-    fn new(name: &str, valence: u64, lone: i64, id: u64) -> AtomRef {
-        Rc::new(RefCell::new(Atom {
-            name: name.to_string(),
-            valence,
-            lone,
-            id,
-        }))
-    }
-
     fn get_bonded_electrons_count(&self, bonds_with: &Vec<(AtomRef, BondType)>) -> i64 {
         bonds_with.iter().map(|(_, bond_type)| {
             match bond_type {
@@ -75,6 +70,7 @@ enum BondType {
     TRIPLE
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 enum Hybridization {
     SP,
     SP2,
@@ -225,105 +221,6 @@ impl Model {
 
 
 fn main() {
-
-    let file = File::open("data/data.csv").unwrap();
-    let mut rdr = csv::Reader::from_reader(file);
-    for result in rdr.records() {
-        println!("{:?}", result.unwrap());
-    }
-
-    let valences: HashMap<&str, u64> = HashMap::from([
-        ("H ", 1),  // Hydrogen
-        ("He", 2),  // Helium
-        ("Li", 1),  // Lithium
-        ("Be", 2),  // Beryllium
-        ("B ", 3),  // Boron
-        ("C ", 4),  // Carbon
-        ("N ", 5),  // Nitrogen
-        ("O ", 6),  // Oxygen
-        ("F ", 7),  // Fluorine
-        ("Ne", 8),  // Neon
-        ("Na", 1),  // Sodium
-        ("Mg", 2),  // Magnesium
-        ("Al", 3),  // Aluminum
-        ("Si", 4),  // Silicon
-        ("P ", 5),  // Phosphorus
-        ("S ", 6),  // Sulfur
-        ("Cl", 7),  // Chlorine
-        ("Ar", 8),  // Argon
-        ("K ", 1),  // Potassium
-        ("Ca", 2),  // Calcium
-        ("Ga", 3),  // Gallium
-        ("Ge", 4),  // Germanium
-        ("As", 5),  // Arsenic
-        ("Se", 6),  // Selenium
-        ("Br", 7),  // Bromine
-        ("Kr", 8),  // Krypton
-        ("Rb", 1),  // Rubidium
-        ("Sr", 2),  // Strontium
-        ("In", 3),  // Indium
-        ("Sn", 4),  // Tin
-        ("Sb", 5),  // Antimony
-        ("Te", 6),  // Tellurium
-        ("I ", 7),  // Iodine
-        ("Xe", 8),  // Xenon
-        ("Cs", 1),  // Cesium
-        ("Ba", 2),  // Barium
-        ("Tl", 3),  // Thallium
-        ("Pb", 4),  // Lead
-        ("Bi", 5),  // Bismuth
-        ("Po", 6),  // Polonium
-        ("At", 7),  // Astatine
-        ("Rn", 8),  // Radon
-    ]);
-
-    let electronegativities: HashMap<&str, u64> = HashMap::from([
-        ("H ", 220),
-        ("He", 0), // Helium has no electronegativity.
-        ("Li", 98),
-        ("Be", 155),
-        ("B ", 204),
-        ("C ", 255),
-        ("N ", 304),
-        ("O ", 343),
-        ("F ", 398),
-        ("Ne", 0), // Neon has no electronegativity.
-        ("Na", 93),
-        ("Mg", 143),
-        ("Al", 161),
-        ("Si", 190),
-        ("P ", 219),
-        ("S ", 258),
-        ("Cl", 316),
-        ("Ar", 0), // Argon has no electronegativity.
-        ("K ", 82),
-        ("Ca", 100),
-        ("Ga", 181),
-        ("Ge", 200),
-        ("As", 220),
-        ("Se", 240),
-        ("Br", 280),
-        ("Kr", 0), // Krypton has negligible electronegativity.
-        ("Rb", 82),
-        ("Sr", 95),
-        ("In", 160),
-        ("Sn", 199),
-        ("Sb", 220),
-        ("Te", 221),
-        ("I ", 259),
-        ("Xe", 0), // Xenon has negligible electronegativity.
-        ("Cs", 79),
-        ("Ba", 89),
-        ("Tl", 190),
-        ("Pb", 200),
-        ("Bi", 207),
-        ("Po", 220),
-        ("At", 270),
-        ("Rn", 0), // Radon has negligible electronegativity.
-        ("Fr", 70),
-        ("Ra", 90),
-    ]);
-
     let can_expand_octet: HashMap<&str, bool> = HashMap::from([
         ("H ", false),
         ("He", false),
@@ -382,6 +279,26 @@ fn main() {
 }
 
 fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element> {
+    let file = File::open(file_path).unwrap();
+    let mut rdr = Reader::from_reader(file);
+
+    for result in rdr.records() {
+        let record = result.unwrap();
+
+        let mut symbol = &record[1].to_string();
+        if symbol.len() == 1 {
+            symbol.push(' ');
+        }
+
+        let mut electron_config = &record[5].to_string().split(' ').collect::<Vec<String>>();
+        if electron_config.len() > 1 {
+            electron_config.remove(0);
+        }
+
+        let electronegativity = (&record[6].parse::<f64>().unwrap() * 100.0) as u64;
+    }
+
+    vec![]
 
 }
 
