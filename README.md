@@ -1,4 +1,4 @@
-Built in Rust, this is a Lewis structure visualizer for simple compounds in which there is a central atom to which every other atom is bonded to. Calculations use basic Lewis structure building rules, i.e., each atom wants a full octet and formal charge is minimized.
+Built using Rust, this is a Lewis structure visualizer for simple compounds in which there is a central atom to which every other atom is bonded to. Calculations use basic Lewis structure building rules, i.e., each atom wants a full octet and formal charge is minimized.
 To do: implement hybridization calculation (possibly even switching to using hybridization to determine bonds); show number of sigma and pi bonds; eventually 3d.
 
 # Usage
