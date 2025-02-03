@@ -13,6 +13,7 @@ cargo run CO2 0
 ```
 Output:
 ```
+Linear
  ..      ..
  O ==C ==O
  ˙˙      ˙˙
@@ -25,6 +26,7 @@ cargo run SO4 -2
 ```
 Output:
 ```
+Tetrahedral
     :O :
  ..  ||  ..
 :O --S ==O
@@ -40,6 +42,7 @@ cargo run SF4 0
 ```
 Output:
 ```
+Seesaw
  ..  ..  ..
 :F --S --F :
  ˙˙ / \  ˙˙
