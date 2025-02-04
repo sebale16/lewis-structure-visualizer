@@ -200,6 +200,7 @@ impl Model {
         }
     }
 
+    #[cfg(debug_assertions)]
     fn print_model(&self) {
         for i in 0..self.atoms.len() {
             println!("{:?} -> {:?}", self.atoms[i].borrow(), self.bonds_with[i].iter()
@@ -353,10 +354,12 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args, &valences, &electronegativities);
-    if (input_compound.elements.iter().map(|x| x.valence).sum::<u64>() as i64 - input_compound.charge) % 8 != 0 || input_compound.charge.abs() > 7 {
-        panic!("Cannot create a stable compound!");
-    }
-    
+
+    // todo change this
+    // if (input_compound.elements.iter().map(|x| x.valence).sum::<u64>() as i64 - input_compound.charge) % 8 != 0 || input_compound.charge.abs() > 7 {
+    //     panic!("Cannot create a stable compound!");
+    // }
+    //
     let model_compound = build_model(&input_compound, can_expand_octet, valences);
     display(model_compound);
 }
@@ -617,6 +620,8 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>,
 
         // after bonding
         curr.recalculate_lones();
+        curr.print_model();
+
         let mut electrons_to_full_map: HashMap<Atom, i64> = HashMap::new();
 
         for i in 0..curr.atoms.len() {
@@ -624,9 +629,9 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>,
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_two(&curr.bonds_with[i].clone()));
             } else if curr.atoms[i].borrow().name == "Be" && atoms_count == 3 {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_four(&curr.bonds_with[i].clone()));
-            } else if curr.atoms[i].borrow().name == "Al" || curr.atoms[i].borrow().name == "B " && atoms_count == 4 {
+            } else if curr.atoms[i].borrow().name == "Al" || curr.atoms[i].borrow().name == "B " || curr.atoms[i].borrow().name == "C " && atoms_count == 4 {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_six(&curr.bonds_with[i].clone()));
-            } else if !can_expand.get(&curr.atoms[i].borrow().name.as_str()).unwrap().clone() || !curr.atoms[i].borrow().eq(&new_central_atom.borrow()) {
+            } else if !(can_expand.get(&curr.atoms[i].borrow().name.as_str()).unwrap().clone() && curr.atoms[i].borrow().eq(&new_central_atom.borrow())) {
                 electrons_to_full_map.entry(curr.atoms[i].borrow().clone()).or_insert(curr.atoms[i].borrow().electrons_to_octet(&curr.bonds_with[i].clone()));
             }
         }
