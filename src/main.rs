@@ -27,12 +27,6 @@ struct Atom {
     id: u64
 }
 
-impl Atom {
-    fn to_full_shells(&self) -> u8 {
-        self.spd_orbitals.iter().map(|&x| if x > 0 { 2 - x } else { 0 }).sum::<u8>()
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 enum BondType {
     SIGMA,
@@ -279,7 +273,6 @@ fn parse_input(args : &[String]) -> ParsedCompound {
         }
     }
 
-    let mut elements = vec![];
     let mut element_names_counted = vec![];
 
     let zipped = zip(element_names.iter(), counts.iter());
@@ -289,7 +282,7 @@ fn parse_input(args : &[String]) -> ParsedCompound {
         }
     );
 
-    elements = read_element_csv("data/data.csv", element_names_counted);
+    let elements = read_element_csv("data/data.csv", element_names_counted);
 
     ParsedCompound { elements, charge }
 }
@@ -312,7 +305,7 @@ fn hybridize(valence: u8, which: Hybridization, central_atoms_bonds: Vec<(AtomRe
 
     let length = hybridized.len();
     let mut added_valence = valence;
-    for mut i in 0..valence {
+    for i in 0..valence {
         if added_valence > 0 {
             hybridized[i as usize % length] += 1;
             added_valence -= 1;
