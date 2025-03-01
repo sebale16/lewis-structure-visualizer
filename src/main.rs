@@ -1,13 +1,11 @@
 mod display;
 
 use std::cell::RefCell;
-use std::{env, io};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{env};
 use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
-use csv::Reader;
-// use crate::display::display;
+use csv::{Reader, Writer};
 use itertools::Itertools;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -26,7 +24,6 @@ struct Atom {
     hybridization: Hybridization,
     spd_orbitals: Vec<u8>,
     p_orbitals: Vec<u8>,
-    can_expand: bool,
     id: u64
 }
 
@@ -35,7 +32,6 @@ impl Atom {
         self.spd_orbitals.iter().map(|&x| if x > 0 { 2 - x } else { 0 }).sum::<u8>()
     }
 }
-
 
 #[derive(Clone, Copy, Debug)]
 enum BondType {
@@ -101,19 +97,17 @@ type AtomRef = Rc<RefCell<Atom>>;
 struct Model {
     atoms: Vec<AtomRef>,
     bonds_with: Vec<Vec<(AtomRef, BondType)>>,
-    central_atom_id: usize
 }
 
 impl Model {
-    fn new(atoms: Vec<AtomRef>, central_atom_id: usize) -> Self {
+    fn new(atoms: Vec<AtomRef>) -> Self {
         Model {
             atoms: atoms.clone(),
             bonds_with: vec![Vec::new(); atoms.len()],
-            central_atom_id
         }
     }
 
-    fn add_bond(&mut self, atom_1: AtomRef, atom_2: AtomRef, bond: BondType) -> Result<bool, bool> {
+    fn add_bond(&mut self, atom_1: AtomRef, atom_2: AtomRef, bond: BondType) {
         let mut is_bond_possible = false;
 
         {
@@ -148,7 +142,6 @@ impl Model {
                     }
                 }
             }
-
         }
 
         if is_bond_possible {
@@ -172,11 +165,6 @@ impl Model {
             bonds_of_atom_2.push((atom_1, bond));
             self.bonds_with.insert(index_of_atom_2, bonds_of_atom_2);
         }
-
-        match is_bond_possible {
-            true => Ok(true),
-            false => Err(false)
-        }
     }
 
     fn print_model(&self) {
@@ -192,8 +180,13 @@ impl Model {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let input_compound = parse_input(&args);
-    
+
+    use std::time::Instant;
+    let now = Instant::now();
     let model_compound = build_model(&input_compound);
+    let elapsed = now.elapsed();
+    model_compound.print_model();
+    println!("Elapsed: {:.2?}", elapsed);
 
 }
 
@@ -216,11 +209,11 @@ fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element>
                 let mut electron_config = record[5].split(' ').collect::<Vec<&str>>();
                 electron_config.remove(electron_config.len() - 1);
 
-
                 let mut changed_electron_config: Vec<String> = electron_config.iter().map(|s| s.to_string()).collect();
+
                 if changed_electron_config.len() > 1 {
                     changed_electron_config.remove(0);
-                    if changed_electron_config[0].contains("d") {
+                    if changed_electron_config[0].contains("d") && changed_electron_config[1].contains("p") {
                         changed_electron_config.remove(0);
                     }
                 }
@@ -236,7 +229,6 @@ fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element>
                         element_with_same_name_id = elements.get(i).unwrap().id as i8;
                     }
                 }
-
 
                 if element_with_same_name_index != -1 {
                     elements.push(Element {name: symbol.clone(), electroneg: electronegativity, config: changed_electron_config.clone(), id: (element_with_same_name_id + 1) as u64 })
@@ -259,7 +251,6 @@ fn parse_input(args : &[String]) -> ParsedCompound {
 
     let mut element_names: Vec<String> = vec![];
     let mut element_name = String::new();
-
 
     for (i, c) in inputted_compound.chars().enumerate() {
         if c.is_alphabetic() {
@@ -297,7 +288,6 @@ fn parse_input(args : &[String]) -> ParsedCompound {
             element_names_counted.push(element.clone());
         }
     );
-
 
     elements = read_element_csv("data/data.csv", element_names_counted);
 
@@ -349,19 +339,6 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         .min_by(|a, b| a.electroneg.cmp(&b.electroneg))
         .unwrap_or(input_compound.elements.iter().next().unwrap());
 
-    let check_only_one_central = |vec : Vec<Element>, element: Element| -> bool {
-        let mut count = 0;
-        for item in vec {
-            if item.name == element.name {
-                count += 1;
-            }
-        }
-        if count == 1 {
-            return true;
-        }
-        false
-    };
-
     let bond_all_to_central = |atoms_count: usize, compound: &mut Model, central_atom: AtomRef, bond_type: BondType| {
         for i in 0..atoms_count {
             let atomref = compound.atoms.get(i).unwrap().clone();
@@ -394,7 +371,6 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         hybridization: Hybridization::S,
         spd_orbitals: vec![],
         p_orbitals: vec![],
-        can_expand: false,
         id: 0,
     }));
 
@@ -405,12 +381,11 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
     for j in 0..input_compound.elements.iter().len() {
 
         let element = input_compound.elements[j].clone();
+        let mut valence_count = 0;
+
         let s_orbital_count = element.config[0].chars().last().unwrap().to_digit(10).unwrap();
         let p_orbital_count = element.config.get(1).unwrap_or(&"0".to_string()).chars().last().unwrap().to_digit(10).unwrap();
-        let valence_count = s_orbital_count + p_orbital_count;
-
-        let can_expand = element.config.get(element.config.len() - 1).iter().any(|x|
-            x.chars().nth(x.len() - 2).unwrap() == 'p' && x.chars().nth(x.len() - 1).unwrap().to_digit(10).unwrap() > 2);
+        valence_count += s_orbital_count + p_orbital_count;
 
         let atom = Atom {
             name: element.name.clone(),
@@ -429,7 +404,6 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
                 _ => hybridize(valence_count as u8, Hybridization::SP3, vec![]),
             },
             p_orbitals: vec![],
-            can_expand,
             id: element.id
         };
 
@@ -441,16 +415,9 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         atoms_vec.push(atomref.clone());
     }
 
-    let mut compound = Model::new(atoms_vec.clone(), 0);
+    let mut compound = Model::new(atoms_vec.clone());
 
-    for j in 0..atoms_count {
-        let atomref = compound.atoms.get(j).unwrap().clone();
-        if central_atom.clone() != atomref {
-            compound.add_bond(atomref, central_atom.clone(), BondType::SIGMA);
-        }
-    }
-
-
+    bond_all_to_central(atoms_count, &mut compound, central_atom.clone(), BondType::SIGMA);
 
     // if all atoms are bonded but are missing electrons, create double/triple bonds
     // else hybridize further to allow for more bonding slots
@@ -485,16 +452,12 @@ fn build_model(input_compound: &ParsedCompound) -> Model {
         atom.hybridization = new_hy;
     }
 
-
     // bond each extra p orbital to a central p orbital
     // bonded p orbitals (pi bonds) shown by a "ghost" electron in p_orbitals array to make it 2
     while central_atom.borrow().p_orbitals.contains(&1u8) {
         // search for atom that has an empty slot in p_orbitals, meaning it only has 1 electron
         bond_all_to_central(atoms_count, &mut compound, central_atom.clone(), BondType::PI);
-        compound.print_model();
     }
-
-
 
     // if excess p_orbitals, check charge
     // if charge is 0, "give" p orbital to central atom
