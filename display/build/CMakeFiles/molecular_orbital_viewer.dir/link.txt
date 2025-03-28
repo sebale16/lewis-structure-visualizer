@@ -1,0 +1,1 @@
+/usr/bin/c++ -rdynamic CMakeFiles/molecular_orbital_viewer.dir/src/glad.c.o CMakeFiles/molecular_orbital_viewer.dir/src/main.cpp.o -o molecular_orbital_viewer  -lglfw -lX11 -lpthread -lXrandr -lXi -ldl /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libOpenGL.so 
