@@ -5,12 +5,13 @@ cmake_policy(SET CMP0072 NEW)
 find_package(OpenGL REQUIRED)
 
 add_executable(molecular_orbital_viewer
-    src/main.cpp
-    src/glad.h
-    src/glad.c
+    cpp/main.cpp
+    cpp/glad.h
+    cpp/glad.c
 )
 
 target_link_libraries(molecular_orbital_viewer
     glfw
     OpenGL::GL
 )
+

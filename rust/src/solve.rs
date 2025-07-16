@@ -1,15 +1,12 @@
-mod display;
-
 use std::cell::RefCell;
-use std::{env};
+use std::env;
 use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
 use csv::{Reader, Writer};
-use itertools::Itertools;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-struct Element {
+pub struct Element {
     name: String,
     electroneg: u64,
     config: Vec<String>,
@@ -17,7 +14,7 @@ struct Element {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-struct Atom {
+pub struct Atom {
     name: String,
     valence: u64,
     lone: i64,
@@ -28,13 +25,13 @@ struct Atom {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum BondType {
+pub enum BondType {
     SIGMA,
     PI,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-enum Hybridization {
+pub enum Hybridization {
     S,
     SP,
     SP2,
@@ -80,15 +77,15 @@ impl Hybridization {
 }
 
 #[derive(Debug)]
-struct ParsedCompound {
+pub struct ParsedCompound {
     elements: Vec<Element>,
     charge: i64
 }
 
-type AtomRef = Rc<RefCell<Atom>>;
+pub type AtomRef = Rc<RefCell<Atom>>;
 
 #[derive(Debug, Clone)]
-struct Model {
+pub struct Model {
     atoms: Vec<AtomRef>,
     bonds_with: Vec<Vec<(AtomRef, BondType)>>,
 }
@@ -161,7 +158,7 @@ impl Model {
         }
     }
 
-    fn print_model(&self) {
+    pub fn print_model(&self) {
         for i in 0..self.atoms.len() {
             println!("{:?} -> {:?}\n", self.atoms[i].borrow(), self.bonds_with[i].iter()
                 .map(|(a, b)| {(a.borrow().clone(), *b)})
@@ -170,21 +167,7 @@ impl Model {
     }
 }
 
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let input_compound = parse_input(&args);
-
-    use std::time::Instant;
-    let now = Instant::now();
-    let model_compound = build_model(&input_compound);
-    let elapsed = now.elapsed();
-    model_compound.print_model();
-    println!("Elapsed: {:.2?}", elapsed);
-
-}
-
-fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element> {
+pub fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element> {
     let mut elements: Vec<Element> = Vec::new();
 
     for element_name in element_names {
@@ -236,7 +219,7 @@ fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element>
     elements
 }
 
-fn parse_input(args : &[String]) -> ParsedCompound {
+pub fn parse_input(args : &[String]) -> ParsedCompound {
     let charge: i64 = args[2].clone().parse().unwrap();
 
     let inputted_compound = args[1].clone();
@@ -287,7 +270,7 @@ fn parse_input(args : &[String]) -> ParsedCompound {
     ParsedCompound { elements, charge }
 }
 
-fn hybridize(valence: u8, which: Hybridization, central_atoms_bonds: Vec<(AtomRef, BondType)>) -> Vec<u8> {
+pub fn hybridize(valence: u8, which: Hybridization, central_atoms_bonds: Vec<(AtomRef, BondType)>) -> Vec<u8> {
     let mut hybridized = vec![];
     let mut bonds_count = central_atoms_bonds.len();
     match which {
@@ -324,7 +307,7 @@ fn hybridize(valence: u8, which: Hybridization, central_atoms_bonds: Vec<(AtomRe
     hybridized
 }
 
-fn build_model(input_compound: &ParsedCompound) -> Model {
+pub fn build_model(input_compound: &ParsedCompound) -> Model {
     let mut charge = input_compound.charge.abs();
 
     let min_electroneg = input_compound.elements.iter()
