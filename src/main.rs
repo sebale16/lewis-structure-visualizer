@@ -620,7 +620,6 @@ fn build_model(input_compound: &ParsedCompound, can_expand: HashMap<&str, bool>,
 
         // after bonding
         curr.recalculate_lones();
-        curr.print_model();
 
         let mut electrons_to_full_map: HashMap<Atom, i64> = HashMap::new();
 
