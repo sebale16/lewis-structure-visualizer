@@ -1,9 +1,8 @@
-use std::io::{BufReader, Cursor};
-
 use anyhow::Context;
+use image::{DynamicImage, ImageBuffer, RgbaImage, RgbImage};
 use wgpu::util::DeviceExt;
 
-use crate::{model::{self, ModelVertex, Vertex}, texture};
+use crate::{model::{self, Material, Mesh, ModelVertex}, texture};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -25,7 +24,7 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     };
     #[cfg(not(target_arch = "wasm32"))]
     let txt = {
-        let path = std::path::Path::new(env!("OUT_DIR"))
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("res/orbitals")
             .join(file_name);
         std::fs::read_to_string(path)?
@@ -42,7 +41,7 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     };
     #[cfg(not(target_arch = "wasm32"))]
     let data = {
-        let path = std::path::Path::new(env!("OUT_DIR"))
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("res/orbitals")
             .join(file_name);
         std::fs::read(path)?
@@ -51,25 +50,18 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     Ok(data)
 }
 
-pub async fn load_texture(
-    file_name: &str,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) -> anyhow::Result<texture::Texture> {
-    let data = load_binary(file_name).await?;
-    texture::Texture::from_bytes(device, queue, &data, file_name)
-}
-
 pub async fn load_model(
     file_name: &str,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
 ) -> anyhow::Result<model::Model> {
-    let path = std::path::Path::new(env!("OUT_DIR"))
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("res/orbitals")
         .join(file_name);
-    let (document, buffers, images) = gltf::import(path)
+
+    let (document, buffers, images) = gltf::import(path.as_path())
         .with_context(|| format!("Failed to import gltf: {}", path.display()))?;
 
     let mut materials: Vec<Option<usize>> = vec![None; document.materials().len()];
@@ -140,12 +132,111 @@ pub async fn load_model(
             );
 
             let gltf_mat = primitive.material();
-            let max_idx_opt = gltf_mat.index();
+            let mat_idx_opt = gltf_mat.index();
 
-            let 
+            let material_idx = if let Some(gidx) = mat_idx_opt {
+                // reuse exisiting material if already created
+                if let Some(existing) = materials[gidx] {
+                    materials[gidx] = Some(existing);
+                    existing
+                } else {
+                    // create new material from gltf material
+                    let mat_name = gltf_mat.name().unwrap_or("material").to_string();
 
+                    let diffuse_texture = if let Some(info) = gltf_mat.pbr_metallic_roughness().base_color_texture() {
+                        let tex = info.texture();
+                        let image_index = tex.source().index();
+                        let img = &images[image_index];
+
+                        let dyn_img: DynamicImage = {
+                            let w = img.width as usize;
+                            let h = img.height as usize;
+                            let byte_len = img.pixels.len();
+
+                            if byte_len == w * h * 4 {
+                                // raw RGBA8
+                                let rgba: RgbaImage = ImageBuffer::from_raw(img.width, img.height, img.pixels.clone())
+                                    .context("from_raw failed for RGBA image")?;
+                                DynamicImage::ImageRgba8(rgba)
+                            } else if byte_len == w * h * 3 {
+                                // raw RGB8 -> convert to RGBA
+                                let rgb: RgbImage = ImageBuffer::from_raw(img.width, img.height, img.pixels.clone())
+                                    .context("from_raw failed for RGB image")?;
+                                DynamicImage::ImageRgb8(rgb)
+                            } else {
+                                // maybe it's encoded (png/jpg) bytes, try decode
+                                image::load_from_memory(&img.pixels)
+                                    .context("Failed to parse image bytes: not raw RGB(A) and not an encoded image")?
+                            }
+                        };
+
+                        texture::Texture::from_image(device, queue, &dyn_img, tex.name())?
+                    } else {
+                        let rgba: [u8; 4] = [255, 255, 255, 255];
+                        texture::Texture::from_bytes(device, queue, &rgba, "white")?
+                    };
+
+                    let bind_group = device.create_bind_group(
+                        &wgpu::BindGroupDescriptor {
+                            label: Some(&format!("material_bg_{}", out_materials.len())),
+                            layout: layout,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                                }
+                            ]
+                        }
+                    );
+
+                    out_materials.push(model::Material {
+                        name: mat_name,
+                        diffuse_texture,
+                        bind_group
+                    });
+
+                    let index = out_materials.len() - 1;
+                    materials[gidx] = Some(index);
+                    index
+                }
+            } else {
+                if out_materials.is_empty() {
+                    let rgba: [u8; 4] = [255, 255, 255, 255];
+                    let tex = texture::Texture::from_bytes(device, queue, &rgba, "default_white")?;
+                    let bind_group = device.create_bind_group(
+                        &wgpu::BindGroupDescriptor {
+                            label: Some("default_material_bg"),
+                            layout: layout,
+                            entries: &[
+                                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&tex.view) },
+                                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&tex.sampler) },
+                            ]
+                        }
+                    );
+
+                    out_materials.push(Material {
+                        name: "default".to_string(),
+                        diffuse_texture: tex,
+                        bind_group
+                    });
+                }
+                0
+            };
+
+            out_meshes.push(Mesh {
+                name: mesh_name.clone(),
+                vertex_buffer: vb,
+                index_buffer: ib,
+                num_elements: index_count,
+                material: material_idx,
+                index_format
+            });
         }
     }
 
-    Ok(model::Model { meshes: (), materials: () })
+    Ok(model::Model { meshes: out_meshes, materials: out_materials })
 }

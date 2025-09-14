@@ -2,14 +2,13 @@ mod texture;
 mod model;
 mod resource;
 
-use model::Vertex;
+use model::{Vertex, DrawModel};
 
 use std::sync::Arc;
 use cgmath::prelude::*;
 
-use gltf::camera;
 use winit::{
-    application::ApplicationHandler, dpi::PhysicalPosition, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
+    application::ApplicationHandler, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
 };
 
 use wgpu::util::DeviceExt;
@@ -211,11 +210,7 @@ pub struct State {
     is_surface_configured: bool,
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
-    diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
+    obj_model: model::Model,
     depth_texture: texture::Texture,
     camera: Camera,
     camera_uniform: CameraUniform,
@@ -344,9 +339,6 @@ impl State {
 
         let camera_controller = CameraController::new(0.02);
 
-        let diffuse_bytes = include_bytes!("beluga_whale.png");
-        let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "beluga_whale.png").unwrap();
-
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let texture_bind_group_layout = device.create_bind_group_layout(
@@ -370,23 +362,6 @@ impl State {
                     }
                 ],
                 label: Some("texture_bind_group_layout"),
-            }
-        );
-
-        let diffuse_bind_group = device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                    }
-                ],
-                label: Some("diffuse_bind_group")
             }
         );
 
@@ -451,23 +426,9 @@ impl State {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
-
-        let num_indices = INDICES.len() as u32;
+        let obj_model = resource::load_model("1s.gltf", &device, &queue, &texture_bind_group_layout)
+            .await
+            .unwrap();
 
         let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
             (0..NUM_INSTANCES_PER_ROW).map(move |x| { // move 'z' into inner closure as outer closure iteration ends
@@ -503,11 +464,7 @@ impl State {
             is_surface_configured: false,
             window,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
-            diffuse_bind_group,
-            diffuse_texture,
+            obj_model,
             depth_texture,
             camera,
             camera_uniform,
@@ -582,13 +539,9 @@ impl State {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
