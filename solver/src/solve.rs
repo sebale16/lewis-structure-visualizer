@@ -265,7 +265,11 @@ pub fn parse_input(args : &[String]) -> ParsedCompound {
         }
     );
 
-    let elements = read_element_csv("data/data.csv", element_names_counted);
+    let elements = read_element_csv(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/data.csv").to_str().unwrap(),
+        element_names_counted
+    );
 
     ParsedCompound { elements, charge }
 }
