@@ -19,6 +19,8 @@ wgpu = "26.0.1"
 pollster = "0.3"
 bytemuck = { version = "1.16", features = [ "derive" ] }
 cgmath = "0.18"
+rand = "0.8"
+instant = "0.1"
 
 [build-dependencies]
 anyhow = "1.0"
@@ -43,4 +45,5 @@ web-sys = { version = "0.3", features = [
     "Location"
 ]}
 reqwest = { version = "0.11" }
+instant = { version = "0.1", features = [ "wasm-bindgen" ] }
 

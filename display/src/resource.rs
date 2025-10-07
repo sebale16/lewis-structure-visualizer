@@ -1,5 +1,7 @@
+use std::io::Cursor;
+
 use anyhow::Context;
-use image::{DynamicImage, ImageBuffer, RgbaImage, RgbImage};
+use image::{DynamicImage, ImageBuffer, ImageOutputFormat, RgbImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use crate::{model::{self, Material, Mesh, ModelVertex}, texture};
@@ -143,12 +145,13 @@ pub async fn load_model(
                     // create new material from gltf material
                     let mat_name = gltf_mat.name().unwrap_or("material").to_string();
 
-                    let diffuse_texture = if let Some(info) = gltf_mat.pbr_metallic_roughness().base_color_texture() {
+                    let diffuse_texture: texture::Texture = if let Some(info) = gltf_mat.pbr_metallic_roughness().base_color_texture() {
                         let tex = info.texture();
                         let image_index = tex.source().index();
                         let img = &images[image_index];
 
-                        let dyn_img: DynamicImage = {
+                        // Try fast raw-RGBA and raw-RGB paths first, then fall back to decoding.
+                        let dyn_img_result: anyhow::Result<DynamicImage> = (|| {
                             let w = img.width as usize;
                             let h = img.height as usize;
                             let byte_len = img.pixels.len();
@@ -157,21 +160,42 @@ pub async fn load_model(
                                 // raw RGBA8
                                 let rgba: RgbaImage = ImageBuffer::from_raw(img.width, img.height, img.pixels.clone())
                                     .context("from_raw failed for RGBA image")?;
-                                DynamicImage::ImageRgba8(rgba)
+                                Ok(DynamicImage::ImageRgba8(rgba))
                             } else if byte_len == w * h * 3 {
                                 // raw RGB8 -> convert to RGBA
                                 let rgb: RgbImage = ImageBuffer::from_raw(img.width, img.height, img.pixels.clone())
                                     .context("from_raw failed for RGB image")?;
-                                DynamicImage::ImageRgb8(rgb)
+                                Ok(DynamicImage::ImageRgb8(rgb))
                             } else {
-                                // maybe it's encoded (png/jpg) bytes, try decode
+                                // Try to interpret as an encoded image (png/jpg/webp/...)
                                 image::load_from_memory(&img.pixels)
-                                    .context("Failed to parse image bytes: not raw RGB(A) and not an encoded image")?
+                                    .context("Failed to parse image bytes: not raw RGB(A) and not an encoded image")
                             }
-                        };
+                        })();
 
-                        texture::Texture::from_image(device, queue, &dyn_img, tex.name())?
+                        match dyn_img_result {
+                            Ok(dyn_img) => {
+                                // success: create texture from image
+                                match texture::Texture::from_image(device, queue, &dyn_img, tex.name()) {
+                                    Ok(t) => t,
+                                    Err(e) => {
+                                        eprintln!("warning: failed to create texture from image ({}): {}; using white default", tex.name().unwrap_or("unnamed"), e);
+                                        // fallback to white
+                                        let rgba: [u8; 4] = [255, 255, 255, 255];
+                                        texture::Texture::from_bytes(device, queue, &rgba, "white").context("failed to create fallback white texture")?
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                // Couldn't decode image bytes for some reason: fall back to white texture
+                                eprintln!("warning: couldn't decode gltf image for material '{}': {}; using white default",
+                                        gltf_mat.name().unwrap_or("unnamed"), err);
+                                let rgba: [u8; 4] = [255, 255, 255, 255];
+                                texture::Texture::from_bytes(device, queue, &rgba, "white").context("failed to create fallback white texture")?
+                            }
+                        }
                     } else {
+                        // no base_color_texture: use white
                         let rgba: [u8; 4] = [255, 255, 255, 255];
                         texture::Texture::from_bytes(device, queue, &rgba, "white")?
                     };
@@ -205,8 +229,16 @@ pub async fn load_model(
                 }
             } else {
                 if out_materials.is_empty() {
-                    let rgba: [u8; 4] = [255, 255, 255, 255];
-                    let tex = texture::Texture::from_bytes(device, queue, &rgba, "default_white")?;
+                    let mut png_bytes: Vec<u8> = Vec::new();
+                    {
+                        let rgba = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 255, 255, 255]));
+                        let dyn_img = DynamicImage::ImageRgba8(rgba);
+                        // write PNG to Vec<u8>
+                        dyn_img
+                            .write_to(&mut Cursor::new(&mut png_bytes), ImageOutputFormat::Png)
+                            .context("Failed to encode default white png!")?;
+                    }
+                    let tex = texture::Texture::from_bytes(device, queue, &png_bytes.as_slice(), "default_white")?;
                     let bind_group = device.create_bind_group(
                         &wgpu::BindGroupDescriptor {
                             label: Some("default_material_bg"),
