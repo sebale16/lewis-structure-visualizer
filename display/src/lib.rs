@@ -499,6 +499,11 @@ pub struct App {
     proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
     last_time: instant::Instant,
+    
+    // FPS tracking
+    fps_frames: u32,
+    fps_last_instant: instant::Instant,
+    fps_update_interval: std::time::Duration,
 }
 
 
@@ -506,11 +511,15 @@ impl App {
     pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
         #[cfg(target_arch = "wasm32")]
         let proxy = Some(event_loop.create_proxy());
+        let now = instant::Instant::now();
         Self {
             state: None,
             #[cfg(target_arch = "wasm32")]
             proxy,
-            last_time: instant::Instant::now(),
+            last_time: now,
+            fps_frames: 0,
+            fps_last_instant: now,
+            fps_update_interval: std::time::Duration::from_millis(250), // update title 4x/sec
         }
     }
 }
@@ -622,6 +631,19 @@ impl ApplicationHandler<State> for App {
                     Err(e) => {
                         log::error!("Unable to render {}", e);
                     }
+                }
+
+                // FPS Tracking
+                self.fps_frames += 1;
+                let elapsed = self.fps_last_instant.elapsed();
+                if elapsed >= self.fps_update_interval {
+                    let fps = self.fps_frames as f32 / elapsed.as_secs_f32();
+
+                    let title = format!("{:.1} FPS", fps);
+                    state.window.set_title(&title);
+
+                    self.fps_frames = 0;
+                    self.fps_last_instant = instant::Instant::now();
                 }
             }
             WindowEvent::MouseInput {
