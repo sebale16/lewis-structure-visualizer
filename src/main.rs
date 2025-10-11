@@ -1,11 +1,11 @@
-mod display;
+// mod display;
 
 use std::cell::RefCell;
 use std::env;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::rc::Rc;
-use crate::display::display;
+// use crate::display::display;
 use itertools::Itertools;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -361,7 +361,7 @@ fn main() {
     // }
     //
     let model_compound = build_model(&input_compound, can_expand_octet, valences);
-    display(model_compound);
+    // display(model_compound);
 }
 
 fn parse_input(_args : &[String], valences: &HashMap<&str, u64>, electronegativities: &HashMap<&str, u64>) -> ParsedCompound {
