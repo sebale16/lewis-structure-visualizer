@@ -1,6 +1,6 @@
 cmake_minimum_required( VERSION 3.20 )
 project( display2 VERSION 0.1.0 LANGUAGES CXX C )
-set(CMAKE_CXX_STANDARD 20)
+set( CMAKE_CXX_STANDARD 20 )
 
 add_executable( display2
     src/main.cpp
@@ -8,7 +8,7 @@ add_executable( display2
 
 set( DAWN_FETCH_DEPENDENCIES ON )
 set( DAWN_BUILD_MONOLITHIC_LIBRARY STATIC )
-add_subdirectory( lib/dawn EXCLUDE_FROM_ALL )
+add_subdirectory( "lib/dawn" EXCLUDE_FROM_ALL )
 
 target_link_libraries( display2 PRIVATE webgpu_dawn webgpu_glfw glfw )
 

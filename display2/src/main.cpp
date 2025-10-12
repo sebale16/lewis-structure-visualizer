@@ -12,8 +12,12 @@ wgpu::Surface           g_surface;
 wgpu::TextureFormat     g_format;
 
 int main() {
+    static const auto kTimedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
+
     wgpu::InstanceDescriptor desc = {};
     desc.nextInChain = nullptr;
+    desc.requiredFeatureCount = 1;
+    desc.requiredFeatures = &kTimedWaitAny;
 
     g_instance = wgpu::CreateInstance(&desc);
 
@@ -40,7 +44,12 @@ int main() {
     wgpu::AdapterInfo adapter_info;
     g_adapter.GetInfo(&adapter_info);
 
-    std::cout << adapter_info.architecture.data << std::endl;
+    std::cout << "VendorID: " << std::hex << adapter_info.vendorID << std::dec << "\n";
+    std::cout << "Vendor: " << adapter_info.vendor.data << "\n";
+    std::cout << "Architecture: " << adapter_info.architecture.data << "\n";
+    std::cout << "DeviceID: " << std::hex << adapter_info.deviceID << std::dec << "\n";
+    std::cout << "Name: " << adapter_info.device.data << "\n";
+    std::cout << "Driver description: " << adapter_info.description.data << "\n";
+    return EXIT_SUCCESS;
 
-    return 0;
 }
