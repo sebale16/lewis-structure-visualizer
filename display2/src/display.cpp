@@ -139,7 +139,7 @@ void display::Application::RenderPresent() {
             .view = GetNextSurfaceTextureView(),
             .loadOp = wgpu::LoadOp::Clear,
             .storeOp = wgpu::StoreOp::Store,
-            .clearValue = wgpu::Color{ 1.0, 0.1, 0.1, 1.0 },
+            .clearValue = wgpu::Color{ 1.0, 0.4, 0.1, 1.0 },
     };
 
     // command encoder for drawing
