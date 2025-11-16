@@ -7,17 +7,108 @@
 void display::Application::ConfigureSurface() {
     wgpu::SurfaceCapabilities capabilities;
     surface.GetCapabilities(adapter, &capabilities);
-    format = capabilities.formats[0];
+    textureFormat = capabilities.formats[0];
     
     wgpu::SurfaceConfiguration config {
             .device = device,
-            .format = format,
+            .format = textureFormat,
             .width = gWidth,
             .height = gHeight,
             .presentMode = wgpu::PresentMode::Fifo,
     };
 
     surface.Configure(&config);
+}
+
+void display::Application::CreateRenderPipeline() {
+    // TODO: remove
+    // example shader code (triangle)
+    const char* shaderSource = R"(
+    @vertex
+    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4f {
+        var p = vec2f(0.0, 0.0);
+        if (in_vertex_index == 0u) {
+            p = vec2f(-0.5, -0.5);
+        } else if (in_vertex_index == 1u) {
+            p = vec2f(0.5, -0.5);
+        } else {
+            p = vec2f(0.0, 0.5);
+        }
+        return vec4f(p, 0.0, 1.0);
+    }
+
+    @fragment
+    fn fs_main() -> @location(0) vec4f {
+        return vec4f(0.0, 0.4, 1.0, 1.0);
+    }
+    )";
+
+    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
+
+    /// describe vertex pipeline state
+    // load shader module for vertex pipeline state
+    wgpu::ShaderSourceWGSL shaderSourceWgsl {
+        wgpu::ShaderSourceWGSL::Init {.code = shaderSource }
+    };
+    wgpu::ShaderModuleDescriptor shaderModuleDescriptor {
+        .nextInChain = &shaderSourceWgsl,
+        .label = "Shader source",
+    };
+    wgpu::ShaderModule shaderModule = device.CreateShaderModule(&shaderModuleDescriptor);
+    wgpu::VertexState vertexState {
+        .module = shaderModule,
+        .entryPoint = "vs_main",
+    };
+
+    renderPipelineDescriptor.vertex = vertexState;
+
+    /// describe primitive pipeline state
+    wgpu::PrimitiveState primitiveState {
+        .topology = wgpu::PrimitiveTopology::TriangleList,
+        .frontFace = wgpu::FrontFace::CCW,
+        .cullMode = wgpu::CullMode::None,
+    };
+
+    renderPipelineDescriptor.primitive = primitiveState;
+
+    /// describe fragment pipeline state
+    wgpu::BlendState blendState {
+        .color = wgpu::BlendComponent {
+            .operation = wgpu::BlendOperation::Add,
+            .srcFactor = wgpu::BlendFactor::SrcAlpha,
+            .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+        },
+        .alpha = wgpu::BlendComponent {
+            .operation = wgpu::BlendOperation::Add,
+            .srcFactor = wgpu::BlendFactor::Zero,
+            .dstFactor = wgpu::BlendFactor::One,
+        }
+    };
+    wgpu::ColorTargetState colorTargetState {
+        .format = textureFormat,
+        .blend = &blendState,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+    wgpu::FragmentState fragmentState {
+        .module = shaderModule,
+        .entryPoint = "fs_main",
+        .targetCount = 1, // only one target because render pass has only one output color attachment
+        .targets = &colorTargetState,
+    };
+
+    renderPipelineDescriptor.fragment = &fragmentState;
+
+    /// describe stencil/depth fragment state
+    renderPipelineDescriptor.depthStencil = nullptr;
+
+    /// describe multi-sampling state
+    wgpu::MultisampleState multisampleState;
+    renderPipelineDescriptor.multisample = multisampleState;
+
+    /// describe pipeline layout
+    renderPipelineDescriptor.layout = nullptr;
+
+    renderPipeline = device.CreateRenderPipeline(&renderPipelineDescriptor);
 }
 
 wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
@@ -44,10 +135,11 @@ wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
 
 bool display::Application::Initialize(uint32_t width, uint32_t height) {
     static const auto kTimedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
-    wgpu::InstanceDescriptor instance_desc = {};
-    instance_desc.nextInChain = nullptr;
-    instance_desc.requiredFeatureCount = 1;
-    instance_desc.requiredFeatures = &kTimedWaitAny;
+    wgpu::InstanceDescriptor instance_desc = {
+        .nextInChain = nullptr,
+        .requiredFeatureCount = 1,
+        .requiredFeatures = &kTimedWaitAny,
+    };
 
     instance = wgpu::CreateInstance(&instance_desc);
 
@@ -130,6 +222,8 @@ bool display::Application::Initialize(uint32_t width, uint32_t height) {
     gHeight = height;
     ConfigureSurface();
 
+    CreateRenderPipeline();
+
     return true;
 }
 
@@ -139,7 +233,7 @@ void display::Application::RenderPresent() {
             .view = GetNextSurfaceTextureView(),
             .loadOp = wgpu::LoadOp::Clear,
             .storeOp = wgpu::StoreOp::Store,
-            .clearValue = wgpu::Color{ 1.0, 0.1, 0.1, 1.0 },
+            .clearValue = wgpu::Color{ 1.0, 0.7, 0.3, 1.0 },
     };
 
     // command encoder for drawing
@@ -157,6 +251,8 @@ void display::Application::RenderPresent() {
 
     // record the render pass
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDesc);
+    renderPass.SetPipeline(renderPipeline);
+    renderPass.Draw(3, 1, 0, 0);
     renderPass.End();
 
     // finish recording

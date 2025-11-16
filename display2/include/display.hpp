@@ -15,25 +15,26 @@ class Application {
         uint32_t gWidth;
         uint32_t gHeight;
         wgpu::Surface surface;
-        wgpu::TextureFormat format;
+        wgpu::TextureFormat textureFormat;
+        wgpu::RenderPipeline renderPipeline;
 
-        /// helper to configure surface
+        /// @brief helper to configure surface
         void ConfigureSurface();
 
-        /// returns the next wgpu::TextureView that can be drawn on
+        /// @brief returns the next wgpu::TextureView that can be drawn on
         wgpu::TextureView GetNextSurfaceTextureView();
 
+        /// @brief helper to initialize render pipeline
+        void CreateRenderPipeline();
+
     public:
-        /// initializes application and returns success or failure
+        /// @brief initializes application and returns success or failure
         bool Initialize(uint32_t width, uint32_t height);
 
-        /// terminate what was initialized
-        void Terminate();
-
-        /// render and present a frame
+        /// @brief render and present a frame
         void RenderPresent();
 
-        /// returns true if app should keep rendering; necessary because window is a private member
+        /// @brief returns true if app should keep rendering; necessary because window is a private member
         bool KeepRunning();
 };
 
