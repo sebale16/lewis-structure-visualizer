@@ -1,3 +1,6 @@
 [submodule "display2/third_party/dawn"]
 	path = display2/third_party/dawn
 	url = https://github.com/google/dawn.git
+[submodule "display2/third_party/quaternions"]
+	path = display2/third_party/quaternions
+	url = https://github.com/ferd36/quaternions
