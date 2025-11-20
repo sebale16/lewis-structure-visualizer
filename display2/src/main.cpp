@@ -8,7 +8,7 @@
 
 int main() {
     display::Application app;
-    uint32_t width{800}, height{600};
+    uint32_t width{1920}, height{1080};
 
     if (!app.Initialize(width, height)) return EXIT_FAILURE;
 
