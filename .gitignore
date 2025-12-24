@@ -1,8 +1,2 @@
-/display/build
-/display/.clang-format
-/.idea
-/.vs
-/.vscode
-/build
-/target
-*.swp
+display2/.cache/
+display2/build/

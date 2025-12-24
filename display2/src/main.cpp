@@ -1,6 +1,7 @@
-#include "display.hpp"
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
+
+#include "display.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -10,17 +11,19 @@ int main() {
     display::Application app;
     uint32_t width{1920}, height{1080};
 
-    if (!app.Initialize(width, height)) return EXIT_FAILURE;
+    if (!app.Initialize(width, height))
+        return EXIT_FAILURE;
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(
-            [](void* arg) {
-                auto *pApp = static_cast<display::Application*>(arg);
-                pApp->RenderPresent();
-            },
-            &app, // arg passed to callback
-            0, // fps (0 means that browser decides)
-            true // simulate_infinite_loop (true means that execution will pause here)
+        [](void *arg) {
+            auto *pApp = static_cast<display::Application *>(arg);
+            pApp->RenderPresent();
+        },
+        &app, // arg passed to callback
+        0,    // fps (0 means that browser decides)
+        true  // simulate_infinite_loop (true means that execution will pause
+              // here)
     );
 #else
     while (app.KeepRunning()) {

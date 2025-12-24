@@ -6,36 +6,40 @@
 namespace display {
 
 class Application {
-    private:
-        GLFWwindow *window;
-        wgpu::Instance instance;
-        wgpu::Adapter adapter;
-        wgpu::Device device;
-        wgpu::Queue queue;
-        uint32_t gWidth;
-        uint32_t gHeight;
-        wgpu::Surface surface;
-        wgpu::TextureFormat textureFormat;
-        wgpu::RenderPipeline renderPipeline;
+private:
+    GLFWwindow *window;
+    wgpu::Instance instance;
+    wgpu::Adapter adapter;
+    wgpu::Device device;
+    wgpu::Queue queue;
+    uint32_t gWidth;
+    uint32_t gHeight;
+    wgpu::Surface surface;
+    wgpu::TextureFormat textureFormat;
+    wgpu::RenderPipeline renderPipeline;
 
-        /// @brief helper to configure surface
-        void ConfigureSurface();
+    wgpu::Buffer pointBuffer;
+    wgpu::Buffer indexBuffer;
 
-        /// @brief returns the next wgpu::TextureView that can be drawn on
-        wgpu::TextureView GetNextSurfaceTextureView();
+    /// helper to configure surface
+    void ConfigureSurface();
 
-        /// @brief helper to initialize render pipeline
-        void CreateRenderPipeline();
+    /// returns the next wgpu::TextureView that can be drawn on
+    wgpu::TextureView GetNextSurfaceTextureView();
 
-    public:
-        /// @brief initializes application and returns success or failure
-        bool Initialize(uint32_t width, uint32_t height);
+    /// helper to initialize render pipeline
+    void CreateRenderPipeline();
 
-        /// @brief render and present a frame
-        void RenderPresent();
+public:
+    /// initializes application and returns success or failure
+    bool Initialize(uint32_t width, uint32_t height);
 
-        /// @brief returns true if app should keep rendering; necessary because window is a private member
-        bool KeepRunning();
+    /// render and present a frame
+    void RenderPresent();
+
+    /// returns true if app should keep rendering; necessary because
+    /// window is a private member
+    bool KeepRunning();
 };
 
-}
+} // namespace display
