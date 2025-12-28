@@ -1,5 +1,4 @@
 mod solve;
-// mod format;
 
 use std::env;
 use crate::solve::parse_input;
@@ -14,5 +13,6 @@ pub fn main() {
     let model_compound = build_model(&input_compound);
     let elapsed = now.elapsed();
     model_compound.print_model();
+    let _ = model_compound.write_to_json(format!("{}_{}.json", args[1], args[2]));
     println!("Elapsed: {:.2?}", elapsed);
 }

@@ -3,25 +3,28 @@ use std::env;
 use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
-use csv::{Reader, Writer};
+use csv::{Reader};
+use serde_json::Result;
+use serde::{Serialize, Deserialize};
+use std::io::BufWriter;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Element {
     name: String,
-    electroneg: u64,
+    electroneg: u32,
     config: Vec<String>,
-    id: u64
+    id: u32
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Atom {
     name: String,
-    valence: u64,
-    lone: i64,
+    valence: u32,
+    lone: u32,
     hybridization: Hybridization,
     spd_orbitals: Vec<u8>,
     p_orbitals: Vec<u8>,
-    id: u64
+    id: u32
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,21 +81,41 @@ impl Hybridization {
 
 #[derive(Debug)]
 pub struct ParsedCompound {
+    name: String,
     elements: Vec<Element>,
-    charge: i64
+    charge: i32
 }
 
 pub type AtomRef = Rc<RefCell<Atom>>;
 
 #[derive(Debug, Clone)]
 pub struct Model {
+    name: String,
     atoms: Vec<AtomRef>,
     bonds_with: Vec<Vec<(AtomRef, BondType)>>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Entry {
+    name: String,
+    valence: u32,
+    lone: u32,
+    hybridization: String,
+    bonds_with: Vec<(String, u32, String)>, // name, id, BondType
+    p_orbitals: Vec<u8>,
+    spd_orbitals: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct EntryModel {
+    name: String,
+    atoms: Vec<Entry>,
+}
+
 impl Model {
-    fn new(atoms: Vec<AtomRef>) -> Self {
+    fn new(name: String, atoms: Vec<AtomRef>) -> Self {
         Model {
+            name: name,
             atoms: atoms.clone(),
             bonds_with: vec![Vec::new(); atoms.len()],
         }
@@ -165,6 +188,35 @@ impl Model {
                 .collect::<Vec<(Atom, BondType)>>());
         }
     }
+
+    // write Model to json file
+    pub fn write_to_json(&self, path: String) -> std::io::Result<()> { 
+        // convert current struct to Entry struct so that it can be serialized
+        // each Entry represents one atom in the model
+        let entries = self.atoms.iter().enumerate().map(|(i, a)| {
+            let atom = a.borrow();
+            Entry {
+                name: atom.name.clone(),
+                valence: atom.valence,
+                lone: atom.lone,
+                hybridization: format!("{:?}", atom.hybridization),
+                bonds_with: self.bonds_with[i].iter()
+                    .map(|(a, b)| {(a.borrow().name.clone(), a.borrow().id, format!("{:?}", b))})
+                    .collect::<Vec<_>>(),
+                p_orbitals: atom.p_orbitals.clone(),
+                spd_orbitals: atom.spd_orbitals.clone(),
+            }
+        }).collect::<Vec<_>>();
+        let entry_model: EntryModel = EntryModel {
+            name: self.name.clone(),
+            atoms: entries,
+        };
+
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(writer, &entry_model)?;
+        Ok(())
+    }
 }
 
 pub fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Element> {
@@ -195,7 +247,7 @@ pub fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Elem
                     }
                 }
 
-                let electronegativity = (&record[6].parse::<f64>().unwrap_or(0.0) * 100.0) as u64;
+                let electronegativity = (&record[6].parse::<f64>().unwrap_or(0.0) * 100.0) as u32;
 
                 let mut element_with_same_name_index = -1;
                 let mut element_with_same_name_id = -1;
@@ -208,7 +260,7 @@ pub fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Elem
                 }
 
                 if element_with_same_name_index != -1 {
-                    elements.push(Element {name: symbol.clone(), electroneg: electronegativity, config: changed_electron_config.clone(), id: (element_with_same_name_id + 1) as u64 })
+                    elements.push(Element {name: symbol.clone(), electroneg: electronegativity, config: changed_electron_config.clone(), id: (element_with_same_name_id + 1) as u32 })
                 } else {
                     elements.push(Element {name: symbol.clone(), electroneg: electronegativity, config: changed_electron_config.clone(), id: 0})
                 }
@@ -220,11 +272,11 @@ pub fn read_element_csv(file_path: &str, element_names: Vec<String>) -> Vec<Elem
 }
 
 pub fn parse_input(args : &[String]) -> ParsedCompound {
-    let charge: i64 = args[2].clone().parse().unwrap();
+    let charge: i32 = args[2].clone().parse().unwrap();
 
     let inputted_compound = args[1].clone();
 
-    let mut counts: Vec<u64> = vec![];
+    let mut counts: Vec<u32> = vec![];
 
     let mut element_names: Vec<String> = vec![];
     let mut element_name = String::new();
@@ -246,7 +298,7 @@ pub fn parse_input(args : &[String]) -> ParsedCompound {
                 element_names.push(element_name.clone());
                 element_name.clear();
             }
-            counts.push(c.to_digit(10).unwrap() as u64);
+            counts.push(c.to_digit(10).unwrap() as u32);
         }
     }
     if !element_name.is_empty() {
@@ -271,7 +323,7 @@ pub fn parse_input(args : &[String]) -> ParsedCompound {
         element_names_counted
     );
 
-    ParsedCompound { elements, charge }
+    ParsedCompound { name: format!("{}_{}", args[1].clone(), args[2]), elements, charge }
 }
 
 pub fn hybridize(valence: u8, which: Hybridization, central_atoms_bonds: Vec<(AtomRef, BondType)>) -> Vec<u8> {
@@ -369,8 +421,8 @@ pub fn build_model(input_compound: &ParsedCompound) -> Model {
 
         let atom = Atom {
             name: element.name.clone(),
-            valence: valence_count as u64,
-            lone: valence_count as i64,
+            valence: valence_count as u32,
+            lone: valence_count as u32,
             hybridization: match valence_count {
                 0 | 1 => Hybridization::S,
                 2 => Hybridization::SP,
@@ -395,7 +447,7 @@ pub fn build_model(input_compound: &ParsedCompound) -> Model {
         atoms_vec.push(atomref.clone());
     }
 
-    let mut compound = Model::new(atoms_vec.clone());
+    let mut compound = Model::new(input_compound.name.clone(), atoms_vec.clone());
 
     bond_all_to_central(atoms_count, &mut compound, central_atom.clone(), BondType::SIGMA);
 
