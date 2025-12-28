@@ -45,19 +45,23 @@ struct Atom {
     quaternion::Quaternion<float> rotation;
 };
 
-class Model {
+class Molecule {
 private:
     std::vector<std::shared_ptr<Atom>> atoms;
     // index matches with atoms
-    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bonds_with;
+    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bondsWith;
     // used to determine where to draw bonded atoms
     Group group;
 
-public:
-    Model(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
+    // computes geometry (Group) of model based on atoms and bonds_with and updates `group`
+    void computeGroup();
 
-    // fills model with precomputed data from solver
-    void fillModel(nlohmann::json data);
+public:
+    Molecule(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
+
+    // fills molecule with precomputed data from solver
+    void fillMolecule(nlohmann::json data);
+
 };
 
 } // namespace model
