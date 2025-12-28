@@ -4,7 +4,6 @@ use std::fs::File;
 use std::iter::zip;
 use std::rc::Rc;
 use csv::{Reader};
-use serde_json::Result;
 use serde::{Serialize, Deserialize};
 use std::io::BufWriter;
 
@@ -100,6 +99,7 @@ struct Entry {
     name: String,
     valence: u32,
     lone: u32,
+    id: u32,
     hybridization: String,
     bonds_with: Vec<(String, u32, String)>, // name, id, BondType
     p_orbitals: Vec<u8>,
@@ -199,6 +199,7 @@ impl Model {
                 name: atom.name.clone(),
                 valence: atom.valence,
                 lone: atom.lone,
+                id: atom.id,
                 hybridization: format!("{:?}", atom.hybridization),
                 bonds_with: self.bonds_with[i].iter()
                     .map(|(a, b)| {(a.borrow().name.clone(), a.borrow().id, format!("{:?}", b))})
