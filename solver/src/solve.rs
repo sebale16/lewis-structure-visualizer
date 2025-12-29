@@ -95,13 +95,20 @@ pub struct Model {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Entry {
+struct EntryBond {
+    name: String,
+    id: u32,
+    bond_type: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct EntryAtom {
     name: String,
     valence: u32,
     lone: u32,
     id: u32,
     hybridization: String,
-    bonds_with: Vec<(String, u32, String)>, // name, id, BondType
+    bonds_with: Vec<EntryBond>,
     p_orbitals: Vec<u8>,
     spd_orbitals: Vec<u8>,
 }
@@ -109,7 +116,7 @@ struct Entry {
 #[derive(Serialize, Deserialize)]
 struct EntryModel {
     name: String,
-    atoms: Vec<Entry>,
+    atoms: Vec<EntryAtom>,
 }
 
 impl Model {
@@ -195,14 +202,14 @@ impl Model {
         // each Entry represents one atom in the model
         let entries = self.atoms.iter().enumerate().map(|(i, a)| {
             let atom = a.borrow();
-            Entry {
+            EntryAtom {
                 name: atom.name.clone(),
                 valence: atom.valence,
                 lone: atom.lone,
                 id: atom.id,
                 hybridization: format!("{:?}", atom.hybridization),
                 bonds_with: self.bonds_with[i].iter()
-                    .map(|(a, b)| {(a.borrow().name.clone(), a.borrow().id, format!("{:?}", b))})
+                    .map(|(a, b)| { EntryBond {name: a.borrow().name.clone(), id: a.borrow().id, bond_type: format!("{:?}", b)}})
                     .collect::<Vec<_>>(),
                 p_orbitals: atom.p_orbitals.clone(),
                 spd_orbitals: atom.spd_orbitals.clone(),

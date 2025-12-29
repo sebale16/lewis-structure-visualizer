@@ -6,7 +6,9 @@
 #include <quaternion.h>
 #include <nlohmann/json.hpp>
 
-namespace model {
+#include "display.hpp"
+
+namespace molecule {
 
 enum class Hybridization {
     S,
@@ -23,7 +25,8 @@ enum class Hybridization {
 
 enum class Group {
     Single, // one atom
-    Linear,
+    Linear2,
+    Linear3,
     TriPlanar,
     Tetra,
     TriBipyr,
@@ -39,25 +42,33 @@ enum class Bond {
 struct Atom {
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
     uint8_t protonCount;
+    uint8_t id;
+    uint8_t lone;
     // hybridization enum
     Hybridization hybridization;
-    // quaternion corresponding to rotation
-    quaternion::Quaternion<float> rotation;
+    // number of p orbitals
+    uint8_t pOrbitalCount;
 };
 
-class Model {
+class Molecule {
 private:
     std::vector<std::shared_ptr<Atom>> atoms;
     // index matches with atoms
-    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bonds_with;
+    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bondsWith;
     // used to determine where to draw bonded atoms
     Group group;
 
-public:
-    Model(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
+    // computes geometry (Group) of model based on atoms and bonds_with and updates `group`
+    void computeGroup();
 
-    // fills model with precomputed data from solver
-    void fillModel(nlohmann::json data);
+public:
+    Molecule(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
+
+    // fills molecule with precomputed data from solver
+    void fillMolecule(nlohmann::json data);
+
+    // computes location of center of atoms and their rotation, with central atom at origin; based on `group`
+    std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> computeAtomLocsRots();
 };
 
 } // namespace model
