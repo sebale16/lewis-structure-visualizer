@@ -3,3 +3,4 @@ display2/build/
 target/
 *.json
 *lock*
+display2/bin
