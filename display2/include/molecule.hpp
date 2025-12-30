@@ -1,12 +1,12 @@
 #pragma once
 
+#include "display.hpp"
+
 #include <memory>
 #include <vector>
+#include <string>
 
 #include <quaternion.h>
-#include <nlohmann/json.hpp>
-
-#include "display.hpp"
 
 namespace molecule {
 
@@ -23,15 +23,35 @@ enum class Hybridization {
     SP3D5,
 };
 
-enum class Group {
-    Single, // one atom
+enum class Geometry {
+    // 0 groups
+    Single,
+    // 1 group
     Linear2,
-    Linear3,
-    TriPlanar,
-    Tetra,
-    TriBipyr,
-    Octa,
-    PentBypir
+    // 2 groups
+    Linear,
+    // 3 groups
+    TrigonalPlanar,
+    Bent1Lone,
+    // 4 groups
+    Tetrahedral,
+    TrigonalPyramidal,
+    Bent2Lone,
+    // 5 groups
+    TrigonalBipyramidal,
+    Seesaw,
+    TShape,
+    Linear3Lone,
+    // 6 groups
+    Octahedral,
+    SquarePyramidal,
+    SquarePlanar,
+    // 7 groups
+    PentagonalBipyramidal,
+    PentagonalPyramidal,
+    PentagonalPlanar,
+    // 8 groups
+    SquareAntiprismatic
 };
 
 enum class Bond {
@@ -40,6 +60,7 @@ enum class Bond {
 };
 
 struct Atom {
+    char name[2];
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
     uint8_t protonCount;
     uint8_t id;
@@ -55,20 +76,22 @@ private:
     std::vector<std::shared_ptr<Atom>> atoms;
     // index matches with atoms
     std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bondsWith;
+    // pointer to central atom
+    std::weak_ptr<Atom> centralAtom;
     // used to determine where to draw bonded atoms
-    Group group;
+    std::optional<Geometry> geometry;
 
-    // computes geometry (Group) of model based on atoms and bonds_with and updates `group`
-    void computeGroup();
+    // computes geometry (Geometry) of model based on atoms and bonds_with and update `geometry`
+    void ComputeGeometry();
 
 public:
     Molecule(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
 
     // fills molecule with precomputed data from solver
-    void fillMolecule(nlohmann::json data);
+    void FillMoleculeFromJSON(const std::string& filePath, const std::string& dataCSVPath);
 
     // computes location of center of atoms and their rotation, with central atom at origin; based on `group`
-    std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> computeAtomLocsRots();
+    std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> ComputeAtomLocsRots();
 };
 
 } // namespace model
