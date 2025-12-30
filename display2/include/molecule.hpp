@@ -1,10 +1,11 @@
 #pragma once
 
-#include "display.hpp"
+// #include "display.hpp"
 
 #include <memory>
 #include <vector>
 #include <string>
+#include <optional>
 
 #include <quaternion.h>
 
@@ -54,28 +55,28 @@ enum class Geometry {
     SquareAntiprismatic
 };
 
-enum class Bond {
+enum class BondType {
     SIGMA,
     PI,
 };
 
 struct Atom {
-    char name[2];
+    std::string name;
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
-    uint8_t protonCount;
-    uint8_t id;
-    uint8_t lone;
+    int protonCount;
+    int id;
+    int lone;
     // hybridization enum
     Hybridization hybridization;
     // number of p orbitals
-    uint8_t pOrbitalCount;
+    size_t pOrbitalCount;
 };
 
 class Molecule {
 private:
     std::vector<std::shared_ptr<Atom>> atoms;
     // index matches with atoms
-    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, Bond>>> bondsWith;
+    std::vector<std::vector<std::pair<std::weak_ptr<Atom>, BondType>>> bondsWith;
     // pointer to central atom
     std::weak_ptr<Atom> centralAtom;
     // used to determine where to draw bonded atoms
@@ -85,13 +86,14 @@ private:
     void ComputeGeometry();
 
 public:
-    Molecule(std::vector<std::shared_ptr<Atom>>& atoms_) : atoms(atoms_) {}
-
     // fills molecule with precomputed data from solver
     void FillMoleculeFromJSON(const std::string& filePath, const std::string& dataCSVPath);
 
     // computes location of center of atoms and their rotation, with central atom at origin; based on `group`
-    std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> ComputeAtomLocsRots();
+    // std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> ComputeAtomLocsRots();
+
+    // geometry getter
+    std::optional<Geometry> GetGeometry();
 };
 
 } // namespace model

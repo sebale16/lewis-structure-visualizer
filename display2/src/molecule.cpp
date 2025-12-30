@@ -5,17 +5,19 @@ using namespace molecule;
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <format>
+#include <iostream>
 
 #include <nlohmann/json.hpp>
 
-void Molecule::FillMoleculeFromJSON(const std::string& filePath, const std::string& dataCSVPath) {
+void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::string& dataCSVPath) {
     std::ifstream csvFile(dataCSVPath);
     if (!csvFile.is_open()) {
         throw std::runtime_error("Could not open file: " + dataCSVPath);
     }
 
     // create map of element to atomic number (used to set protonCount in Atom)
-    std::unordered_map<std::string, uint8_t> elementToProton;
+    std::unordered_map<std::string, int> elementToProton;
 
     std::string line;
     // skip header
@@ -30,7 +32,10 @@ void Molecule::FillMoleculeFromJSON(const std::string& filePath, const std::stri
         if (std::getline(ss, protonStr, ',') && std::getline(ss, elementStr, ',')) {
             try {
                 // convert protonStr to int to be placed in map
-                uint8_t protonNum = std::stoi(protonStr);
+                int protonNum = std::stoi(protonStr);
+
+                // strip spaces from elementStr
+                std::erase(elementStr, ' ');
                 elementToProton[elementStr] = protonNum;
             } catch (const std::exception& e) {
                 throw std::runtime_error("Error building map: " + std::string(e.what()));
@@ -38,18 +43,78 @@ void Molecule::FillMoleculeFromJSON(const std::string& filePath, const std::stri
         }
     }
 
-    std::ifstream file(filePath);
+    std::ifstream file(jsonPath);
     if (!file.is_open()) {
-        throw std::runtime_error("Could not open file: " + filePath);
+        throw std::runtime_error("Could not open file: " + jsonPath);
     }
 
     nlohmann::json data;
     file >> data;
-    
+
+    // fill `atoms` and `bondsWith` with data
     auto& atomsEntries = data["atoms"];
     for (const auto& aEntry : atomsEntries) {
-        Atom atom;
-        auto shrAtom = std::make_shared<Atom>(atom);
+        // construct Atom
+        Atom atom = Atom {
+            .id = aEntry["id"],
+            .lone = aEntry["lone"],
+            .pOrbitalCount = aEntry["p_orbitals"].size(),
+        };
+        // remove spaces from string
+        std::string aName = aEntry["name"];
+        std::erase(aName, ' ');
+        atom.name = aName;
+        atom.protonCount = elementToProton[aName];
+
+        // match hybridization from data to enum
+        if (aEntry["hybridization"] == "S") atom.hybridization = Hybridization::S;
+        else if (aEntry["hybridization"] == "SP") atom.hybridization = Hybridization::SP;
+        else if (aEntry["hybridization"] == "SP2") atom.hybridization = Hybridization::SP2;
+        else if (aEntry["hybridization"] == "SP3") atom.hybridization = Hybridization::SP3;
+        else if (aEntry["hybridization"] == "SP3D") atom.hybridization = Hybridization::SP3D;
+        else if (aEntry["hybridization"] == "SP3D2") atom.hybridization = Hybridization::SP3D2;
+        else if (aEntry["hybridization"] == "SP3D3") atom.hybridization = Hybridization::SP3D3;
+        else if (aEntry["hybridization"] == "SP3D4") atom.hybridization = Hybridization::SP3D4;
+        else if (aEntry["hybridization"] == "SP3D5") atom.hybridization = Hybridization::SP3D5;
+        else throw std::runtime_error(
+                std::format("Atom with name {} and id {} had invalid hybridization entry of {}.",
+                    atom.name, atom.id, std::string(aEntry["hybridization"])));
+
+        atoms.emplace_back(std::make_shared<Atom>(atom));
+    }
+
+    // now that atoms are there, construct bonds between atoms
+    // loop through each atom entry
+    for (int i = 0; i < atomsEntries.size(); i++) {
+        std::vector<std::pair<std::weak_ptr<Atom>, BondType>> bonds;
+        auto& bondsWithThisAtom = atomsEntries[i]["bonds_with"];
+        // loop through all bonds
+        for (const auto& bEntry : bondsWithThisAtom) {
+            std::string bName = bEntry["name"];
+            std::erase(bName, ' ');
+            // find if entry in bond matches with an atom
+            auto itBondedWithAtom = std::find_if(atoms.begin(), atoms.end(), [&](const std::shared_ptr<Atom>& a) {
+                    return a->id == bEntry["id"] && a->name == bName;
+            });
+            // continue only if found a valid atom
+            if (itBondedWithAtom != atoms.end()) {
+                auto bondedWithAtom = std::weak_ptr<Atom>(*itBondedWithAtom);
+                // match bond string with bond enum
+                BondType bondType;
+                if (bEntry["bond_type"] == "SIGMA") bondType = BondType::SIGMA;
+                else if (bEntry["bond_type"] == "PI") bondType = BondType::PI;
+                else throw std::runtime_error(
+                        std::format("Atom with name {} and id {} had invalid bond_type entry of {}.",
+                            atoms[i]->name, atoms[i]->id, std::string(bEntry["bond_type"])));
+                // create bond with that atom
+                bonds.emplace_back(std::make_pair(std::weak_ptr<Atom>(bondedWithAtom), bondType));
+            } else {
+                throw std::runtime_error(
+                        std::format("Atom with name {} and id {} could not find atom to bond with.",
+                            atoms[i]->name, atoms[i]->id));
+            }
+        }
+        bondsWith.push_back(bonds);
     }
 }
 
@@ -68,6 +133,7 @@ void Molecule::ComputeGeometry() {
                     // compares address of control block
                     return !atomBond.first.owner_before(currAtom) && !currAtom.owner_before(atomBond.first);
             });
+            if (hasBond) count++;
         }
         if (count > maxCount) {
             centralAtom = currAtom;
@@ -76,9 +142,9 @@ void Molecule::ComputeGeometry() {
     }
 
     // find number of lone pairs around central atom
-    uint8_t loneCount{0};
+    int loneCount{0};
     if (auto shrCentralAtom = centralAtom.lock()) {
-         loneCount = centralAtom.lock()->lone;
+         loneCount = shrCentralAtom->lone;
     }
 
     // update `group` depending on those two values
@@ -86,7 +152,7 @@ void Molecule::ComputeGeometry() {
     if (atomCount == 1) geometry = Geometry::Single;
     else if (atomCount == 2) geometry = Geometry::Linear2;
     else {
-        uint8_t stericNumber = atomCount - 1 + loneCount / 2;
+        int stericNumber = atomCount - 1 + loneCount / 2;
         switch (stericNumber) {
             case 2:
                 geometry = Geometry::Linear;
@@ -104,7 +170,7 @@ void Molecule::ComputeGeometry() {
                 if (loneCount == 0) geometry = Geometry::TrigonalBipyramidal;
                 else if (loneCount == 2) geometry = Geometry::Seesaw;
                 else if (loneCount == 4) geometry = Geometry::TShape;
-                else if (loneCount == 6) geometry = Geometry::Linear;
+                else if (loneCount == 6) geometry = Geometry::Linear3Lone;
                 break;
             case 6:
                 if (loneCount == 0) geometry = Geometry::Octahedral;
@@ -124,6 +190,11 @@ void Molecule::ComputeGeometry() {
     }
 }
 
-std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> Molecule::ComputeAtomLocsRots() {
-    
+//std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> Molecule::ComputeAtomLocsRots() {
+//    
+//}
+
+std::optional<Geometry> Molecule::GetGeometry() {
+    if (!geometry.has_value()) ComputeGeometry();
+    return geometry;
 }

@@ -2,3 +2,4 @@ display2/.cache/
 display2/build/
 target/
 *.json
+*lock*

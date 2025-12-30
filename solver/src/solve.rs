@@ -327,7 +327,7 @@ pub fn parse_input(args : &[String]) -> ParsedCompound {
 
     let elements = read_element_csv(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("data/data.csv").to_str().unwrap(),
+            .join("../data/data.csv").to_str().unwrap(),
         element_names_counted
     );
 
@@ -423,9 +423,15 @@ pub fn build_model(input_compound: &ParsedCompound) -> Model {
         let element = input_compound.elements[j].clone();
         let mut valence_count = 0;
 
-        let s_orbital_count = element.config[0].chars().last().unwrap().to_digit(10).unwrap();
-        let p_orbital_count = element.config.get(1).unwrap_or(&"0".to_string()).chars().last().unwrap().to_digit(10).unwrap();
-        valence_count += s_orbital_count + p_orbital_count;
+        if element.config.len() < 3 {
+            let s_orbital_count = element.config[0].chars().last().unwrap().to_digit(10).unwrap();
+            let p_orbital_count = element.config.get(1).unwrap_or(&"0".to_string()).chars().last().unwrap().to_digit(10).unwrap();
+            valence_count += s_orbital_count + p_orbital_count;
+        } else {
+            let s_orbital_count = element.config[1].chars().last().unwrap().to_digit(10).unwrap();
+            let p_orbital_count = element.config[2].chars().last().unwrap().to_digit(10).unwrap();
+            valence_count += s_orbital_count + p_orbital_count;
+        }
 
         let atom = Atom {
             name: element.name.clone(),
