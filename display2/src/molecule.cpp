@@ -118,7 +118,7 @@ void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::stri
     }
 }
 
-void Molecule::ComputeGeometry() {
+std::expected<Geometry, std::string> Molecule::ComputeGeometry() {
     // find number of atoms
     auto atomCount = atoms.size();
     size_t maxCount = 0;
@@ -147,54 +147,43 @@ void Molecule::ComputeGeometry() {
          loneCount = shrCentralAtom->lone;
     }
 
-    // update `group` depending on those two values
+    // return geometry depending on those two values
     // base cases
-    if (atomCount == 1) geometry = Geometry::Single;
-    else if (atomCount == 2) geometry = Geometry::Linear2;
+    if (atomCount == 1) return Geometry::Single;
+    else if (atomCount == 2) return Geometry::Linear2;
     else {
         int stericNumber = atomCount - 1 + loneCount / 2;
         switch (stericNumber) {
             case 2:
-                geometry = Geometry::Linear;
-                break;
+                return Geometry::Linear;
             case 3:
-                if (loneCount == 0) geometry = Geometry::TrigonalPlanar;
-                else if (loneCount == 2) geometry = Geometry::Bent1Lone;
-                break;
+                if (loneCount == 0) return Geometry::TrigonalPlanar;
+                else if (loneCount == 2) return Geometry::Bent1Lone;
             case 4:
-                if (loneCount == 0) geometry = Geometry::Tetrahedral;
-                else if (loneCount == 2) geometry = Geometry::TrigonalPyramidal;
-                else if (loneCount == 4) geometry = Geometry::Bent2Lone;
-                break;
+                if (loneCount == 0) return Geometry::Tetrahedral;
+                else if (loneCount == 2) return Geometry::TrigonalPyramidal;
+                else if (loneCount == 4) return Geometry::Bent2Lone;
             case 5:
-                if (loneCount == 0) geometry = Geometry::TrigonalBipyramidal;
-                else if (loneCount == 2) geometry = Geometry::Seesaw;
-                else if (loneCount == 4) geometry = Geometry::TShape;
-                else if (loneCount == 6) geometry = Geometry::Linear3Lone;
-                break;
+                if (loneCount == 0) return Geometry::TrigonalBipyramidal;
+                else if (loneCount == 2) return Geometry::Seesaw;
+                else if (loneCount == 4) return Geometry::TShape;
+                else if (loneCount == 6) return Geometry::Linear3Lone;
             case 6:
-                if (loneCount == 0) geometry = Geometry::Octahedral;
-                else if (loneCount == 2) geometry = Geometry::SquarePyramidal;
-                else if (loneCount == 4) geometry = Geometry::SquarePlanar;
-                break;
+                if (loneCount == 0) return Geometry::Octahedral;
+                else if (loneCount == 2) return Geometry::SquarePyramidal;
+                else if (loneCount == 4) return Geometry::SquarePlanar;
             case 7:
-                if (loneCount == 0) geometry = Geometry::PentagonalBipyramidal;
-                else if (loneCount == 2) geometry = Geometry::PentagonalPyramidal;
-                else if (loneCount == 4) geometry = Geometry::PentagonalPlanar;
-                break;
+                if (loneCount == 0) return Geometry::PentagonalBipyramidal;
+                else if (loneCount == 2) return Geometry::PentagonalPyramidal;
+                else if (loneCount == 4) return Geometry::PentagonalPlanar;
             case 8:
-                if (loneCount == 0) geometry = Geometry::SquareAntiprismatic;
-                break;
+                if (loneCount == 0) return Geometry::SquareAntiprismatic;
+            default:
+                return std::unexpected("No geometry found for molecule!");
         }
-        // if no case is fired, then geometry will stay nullopt
     }
 }
 
 //std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> Molecule::ComputeAtomLocsRots() {
 //    
 //}
-
-std::optional<Geometry> Molecule::GetGeometry() {
-    if (!geometry.has_value()) ComputeGeometry();
-    return geometry;
-}

@@ -5,12 +5,6 @@
 
 namespace display {
 
-struct Point {
-    float x;
-    float y;
-    float z;
-};
-
 class Application {
 private:
     GLFWwindow *window;

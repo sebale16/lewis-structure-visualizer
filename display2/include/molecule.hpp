@@ -1,13 +1,11 @@
 #pragma once
 
-// #include "display.hpp"
-
 #include <memory>
 #include <vector>
 #include <string>
-#include <optional>
+#include <expected>
 
-#include <quaternion.h>
+#include <glm/vec3.hpp>
 
 namespace molecule {
 
@@ -60,6 +58,9 @@ enum class BondType {
     PI,
 };
 
+// atom itself does not have rotation trait
+// a given hybridization produces same orientation of orbitals as outlined in docs
+// rotation is given by ComputeAtomLocsRots
 struct Atom {
     std::string name;
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
@@ -79,21 +80,17 @@ private:
     std::vector<std::vector<std::pair<std::weak_ptr<Atom>, BondType>>> bondsWith;
     // pointer to central atom
     std::weak_ptr<Atom> centralAtom;
-    // used to determine where to draw bonded atoms
-    std::optional<Geometry> geometry;
-
-    // computes geometry (Geometry) of model based on atoms and bonds_with and update `geometry`
-    void ComputeGeometry();
 
 public:
     // fills molecule with precomputed data from solver
-    void FillMoleculeFromJSON(const std::string& filePath, const std::string& dataCSVPath);
+    void FillMoleculeFromJSON(const std::string& jsonPath, const std::string& dataCSVPath);
 
-    // computes location of center of atoms and their rotation, with central atom at origin; based on `group`
-    // std::vector<std::tuple<std::weak_ptr<Atom>, display::Point, quaternion::Quaternion<float>>> ComputeAtomLocsRots();
+    // computes geometry (Geometry) of model based on atoms and bonds_with;
+    // returns error message if no valid geometry or if called on empty molecule
+    std::expected<Geometry, std::string> ComputeGeometry();
 
-    // geometry getter
-    std::optional<Geometry> GetGeometry();
+    // computes location of center of atoms and their rotation, with central atom at origin; based on geometry
+    std::vector<std::tuple<std::weak_ptr<Atom>, glm::vec3, quaternion::Quaternion<float>>> ComputeAtomLocsRots();
 };
 
 } // namespace model

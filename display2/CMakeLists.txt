@@ -1,9 +1,9 @@
 cmake_minimum_required( VERSION 3.20 )
 project( display2 VERSION 0.1.0 LANGUAGES CXX C )
-set( CMAKE_CXX_STANDARD 20 )
+set( CMAKE_CXX_STANDARD 23 )
 set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
-add_library( display2_lib STATIC src/display.cpp src/model.cpp )
+add_library( display2_lib STATIC src/display.cpp src/molecule.cpp )
 target_include_directories( display2_lib PUBLIC include )
 
 # quaternions header
