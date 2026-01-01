@@ -85,7 +85,7 @@ void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::stri
 
     // now that atoms are there, construct bonds between atoms
     // loop through each atom entry
-    for (int i = 0; i < atomsEntries.size(); i++) {
+    for (size_t i = 0; i < atomsEntries.size(); i++) {
         std::vector<std::pair<std::weak_ptr<Atom>, BondType>> bonds;
         auto& bondsWithThisAtom = atomsEntries[i]["bonds_with"];
         // loop through all bonds
@@ -125,7 +125,7 @@ std::expected<Geometry, std::string> Molecule::ComputeGeometry() {
     for (size_t i = 0; i < atomCount; i++) {
         auto currAtom = atoms[i]; // shared_ptr
         size_t count = 0;
-        for (int j = 0; j < atomCount; j++) {
+        for (size_t j = 0; j < atomCount; j++) {
             if (j == i) continue; 
 
             auto& bonds = bondsWith[j];

@@ -5,7 +5,6 @@ enum class Hybridization {
     SP,
     SP2,
     SP3,
-    SP2D,
     SP3D,
     SP3D2,
     SP3D3,
