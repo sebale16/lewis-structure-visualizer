@@ -4,7 +4,7 @@ Done: implement hybridization calculation (possibly even switching to using hybr
  
 To do: 3D.
 
-Note: the code that is in the `master` branch and has this display feature is my outdated code, which has a worse method for determining Lewis structures than the new code in the `display` branch that does not have a nice display output but which is tuned for the 3D graphics pipeline.
+The code that is in the `master` branch and has this display feature is my outdated code, which has a worse method for determining Lewis structures than the new code in the `display` and `display2` branches that do not have a nice display output but which are for the 3D graphics pipeline. `display` is my unfinished work with the `wgpu` crate while `display2` is my ongoing work using Google's Dawn WebGPU implementation.
 
 # Usage
 ```
