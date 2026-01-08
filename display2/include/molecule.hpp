@@ -12,18 +12,43 @@
 #include <glm/vec3.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+// used to define how much should S hybridized atom be shifted depending on its protonCount
+#ifndef S_ORBITAL_SHIFT
+#define S_ORBITAL_SHIFT 1.f
+#endif
+
+// how far away atoms are from central atom if bond is hybridized
+#ifndef SP_ORBITAL_SHIFT
+#define SP_ORBITAL_SHIFT 2.f
+#endif
+
+// scale S orbital model
+#ifndef S_ORBITAL_SCALE
+#define S_ORBITAL_SCALE 1.f
+#endif
+
+// scale SP orbital model
+#ifndef SP_ORBITAL_SCALE
+#define SP_ORBITAL_SCALE 1.f
+#endif
+
+// should molecule with 2 atoms be placed so that midway point is at (0,0,0)
+#ifndef CENTRALIZE
+#define CENTRALIZE 0
+#endif
+
 namespace molecule {
 
 enum class Hybridization {
-    S,
-    SP,
-    SP2,
-    SP3,
-    SP3D,
-    SP3D2,
-    SP3D3,
-    SP3D4,
-    SP3D5,
+    s,
+    sp,
+    sp2,
+    sp3,
+    sp3d,
+    sp3d2,
+    sp3d3,
+    sp3d4,
+    sp3d5,
 };
 
 enum class Geometry {
@@ -64,7 +89,7 @@ enum class BondType {
 
 // atom itself does not have rotation trait
 // a given hybridization produces same orientation of orbitals as outlined in docs
-// rotation is given by ComputeAtomLocsRots
+// rotation is given by ComputeAtomLocsRots and saved in BondedAtom
 struct Atom {
     std::string name;
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
@@ -77,12 +102,21 @@ struct Atom {
     size_t pOrbitalCount;
 };
 
+// represents bonded atom in a molecule
+// an Atom with position and rotation given by ComputeAtomLocsRots
+struct BondedAtom {
+    std::weak_ptr<Atom> wPtrAtom;
+    glm::vec3 loc;
+    glm::quat rot;
+};
+
 class Molecule {
 private:
     std::vector<std::shared_ptr<Atom>> atoms;
     // index matches with atoms
     std::vector<std::vector<std::pair<std::weak_ptr<Atom>, BondType>>> bondsWith;
-    // pointer to central atom
+    // pointer to central atom, determined in ComputeGeometry;
+    // if atomCount == 2, centralAtom will be atom with greater protonCount
     std::weak_ptr<Atom> centralAtom;
 
 public:
@@ -93,8 +127,9 @@ public:
     // returns error message if no valid geometry or if called on empty molecule
     std::expected<Geometry, std::string> ComputeGeometry();
 
-    // computes location of center of atoms and their rotation, with central atom at origin; based on geometry
-    std::vector<std::tuple<std::weak_ptr<Atom>, glm::vec3, glm::quat>> ComputeAtomLocsRots();
+    // computes location of center of atoms and their rotation, with central atom at origin; based on geometry;
+    // returns error message if called on empty molecule
+    std::expected<std::vector<BondedAtom>, std::string> ComputeAtomLocsRots();
 };
 
 } // namespace model

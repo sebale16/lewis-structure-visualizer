@@ -179,7 +179,7 @@ bool display::Application::Initialize(uint32_t width, uint32_t height) {
     adapter.GetLimits(&limits);
     std::cout << "adapter.maxVertexAttributes: " << limits.maxVertexAttributes << "\n";
 
-    // chosing the device
+    // choosing the device
     wgpu::DeviceDescriptor device_desc = {};
     device_desc.SetUncapturedErrorCallback([](const wgpu::Device &,
                                               wgpu::ErrorType error_type,

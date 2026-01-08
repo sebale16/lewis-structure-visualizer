@@ -1,15 +1,15 @@
 Given:
 ```
 enum class Hybridization {
-    S,
-    SP,
-    SP2,
-    SP3,
-    SP3D,
-    SP3D2,
-    SP3D3,
-    SP3D4,
-    SP3D5,
+    s,
+    sp,
+    sp2,
+    sp3,
+    sp3d,
+    sp3d2,
+    sp3d3,
+    sp3d4,
+    sp3d5,
 };
 ``` 
 Define standard oriention of each orbital per hybridization such that one sp orbital points to the right (x-axis)

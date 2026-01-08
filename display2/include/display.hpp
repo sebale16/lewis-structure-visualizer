@@ -37,8 +37,7 @@ public:
     /// render and present a frame
     void RenderPresent();
 
-    /// returns true if app should keep rendering; necessary because
-    /// window is a private member
+    /// returns true if app should keep rendering; necessary because window is a private member
     bool KeepRunning();
 };
 
