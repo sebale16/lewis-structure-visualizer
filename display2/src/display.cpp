@@ -44,7 +44,7 @@ void display::Application::CreateRenderPipeline() {
         wgpu::ShaderSourceWGSL::Init{.code = shaderSource}};
     wgpu::ShaderModuleDescriptor shaderModuleDescriptor{
         .nextInChain = &shaderSourceWgsl,
-        .label = "Shader source",
+        .label = "Shader Source",
     };
     wgpu::ShaderModule shaderModule =
         device.CreateShaderModule(&shaderModuleDescriptor);
@@ -93,7 +93,14 @@ void display::Application::CreateRenderPipeline() {
     renderPipelineDescriptor.fragment = &fragmentState;
 
     /// describe stencil/depth fragment state
-    renderPipelineDescriptor.depthStencil = nullptr;
+    wgpu::DepthStencilState depthStencilState{
+        .format = wgpu::TextureFormat::Depth24PlusStencil8,
+        .depthWriteEnabled = wgpu::OptionalBool::True,
+        .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
+        .stencilReadMask = 0,
+        .stencilWriteMask = 0,
+    };
+    renderPipelineDescriptor.depthStencil = &depthStencilState;
 
     /// describe multi-sampling state
     wgpu::MultisampleState multisampleState;
@@ -102,7 +109,37 @@ void display::Application::CreateRenderPipeline() {
     /// describe pipeline layout
     renderPipelineDescriptor.layout = nullptr;
 
+    /// create render pipeline
     renderPipeline = device.CreateRenderPipeline(&renderPipelineDescriptor);
+
+    /// create depth texture
+    wgpu::TextureDescriptor depthTextureDesc{
+        .label = "Depth Texture Descriptor",
+        .usage = wgpu::TextureUsage::RenderAttachment,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {WIDTH, HEIGHT, 0},
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+        .viewFormatCount = 1,
+        .viewFormats = &depthStencilState.format,
+    };
+    wgpu::Texture depthTexture = device.CreateTexture(&depthTextureDesc);
+
+    /// create depth texture view
+    wgpu::TextureViewDescriptor depthTextureViewDesc{
+        .label = "Depth Texture View",
+        .format = depthStencilState.format,
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::DepthOnly,
+        .usage = wgpu::TextureUsage::RenderAttachment,
+    };
+    wgpu::TextureView depthTextureView = depthTexture.CreateView(&depthTextureViewDesc);
+
+
 }
 
 wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
@@ -122,8 +159,7 @@ wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
         .arrayLayerCount = 1,
         .aspect = wgpu::TextureAspect::All,
     };
-    wgpu::TextureView targetView =
-        surfaceTexture.texture.CreateView(&textureViewDesc);
+    wgpu::TextureView targetView = surfaceTexture.texture.CreateView(&textureViewDesc);
 
     return targetView;
 }

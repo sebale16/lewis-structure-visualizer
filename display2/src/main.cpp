@@ -9,21 +9,19 @@
 
 int main() {
     display::Application app;
-    uint32_t width{1920}, height{1080};
 
-    if (!app.Initialize(width, height))
+    if (!app.Initialize(WIDTH, HEIGHT))
         return EXIT_FAILURE;
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(
         [](void *arg) {
-            auto *pApp = static_cast<display::Application *>(arg);
+            auto *pApp = static_cast<display::Application*>(arg);
             pApp->RenderPresent();
         },
         &app, // arg passed to callback
         0,    // fps (0 means that browser decides)
-        true  // simulate_infinite_loop (true means that execution will pause
-              // here)
+        true  // simulate_infinite_loop (true means that execution will pause here)
     );
 #else
     while (app.KeepRunning()) {

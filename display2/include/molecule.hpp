@@ -5,12 +5,9 @@
 #include <string>
 #include <expected>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
 #include <glm/vec3.hpp>
-#include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 // used to define how much should S hybridized atom be shifted depending on its protonCount
 #ifndef S_ORBITAL_SHIFT

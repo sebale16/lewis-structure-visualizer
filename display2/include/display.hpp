@@ -3,6 +3,14 @@
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 
+#ifndef WIDTH
+#define WIDTH 1920
+#endif
+
+#ifndef HEIGHT
+#define HEIGHT 1080
+#endif
+
 namespace display {
 
 class Application {
