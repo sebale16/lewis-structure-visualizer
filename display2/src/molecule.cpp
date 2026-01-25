@@ -245,8 +245,8 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
                 // move both atoms so that halfway distance is at (0,0,0) if CENTRALIZE
 #if CENTRALIZE
                 auto distance = bondedSecondAtom.loc.x;
-                bondedCentralAtom.loc.x -= distance;
-                bondedSecondAtom.loc.x -= distance;
+                bondedCentralAtom.loc.x -= distance / 2.f;
+                bondedSecondAtom.loc.x -= distance / 2.f;
 #endif
                 return std::expected<std::vector<BondedAtom>, std::string>({
                         bondedCentralAtom, bondedSecondAtom

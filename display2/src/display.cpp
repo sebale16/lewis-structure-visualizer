@@ -2,8 +2,15 @@
 
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_glfw.h>
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#include "tiny_gltf.h"
 
 #include <iostream>
+
+display::Mesh display::Application::LoadMeshFromGLTF(std::string filePath) {
+
+}
 
 void display::Application::ConfigureSurface() {
     wgpu::SurfaceCapabilities capabilities;
@@ -139,6 +146,14 @@ void display::Application::CreateRenderPipeline() {
     };
     wgpu::TextureView depthTextureView = depthTexture.CreateView(&depthTextureViewDesc);
 
+    /// attach the depth texture view to the render pipeline
+    wgpu::RenderPassDepthStencilAttachment depthStencilAttachment{
+        .depthLoadOp = wgpu::LoadOp::Load,
+        .depthStoreOp = wgpu::StoreOp::Store,
+        // initial value of depth buffer, signifying the far value in this case
+        .depthClearValue = 1.0f,
+        .depthReadOnly = true,
+    };
 
 }
 

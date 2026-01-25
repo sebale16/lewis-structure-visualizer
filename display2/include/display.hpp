@@ -13,6 +13,13 @@
 
 namespace display {
 
+struct Mesh {
+    wgpu::Buffer vertexBuffer;
+    wgpu::Buffer indexBuffer;
+    uint32_t indexCount;
+    wgpu::IndexFormat indexFormat;
+};
+
 class Application {
 private:
     GLFWwindow *window;
@@ -25,9 +32,6 @@ private:
     wgpu::Surface surface;
     wgpu::TextureFormat textureFormat;
     wgpu::RenderPipeline renderPipeline;
-
-    wgpu::Buffer pointBuffer;
-    wgpu::Buffer indexBuffer;
 
     /// helper to configure surface
     void ConfigureSurface();
@@ -47,6 +51,9 @@ public:
 
     /// returns true if app should keep rendering; necessary because window is a private member
     bool KeepRunning();
+
+    /// constructs a mesh with point and index buffers from a gltf file
+    Mesh LoadMeshFromGLTF(std::string filePath);
 };
 
 } // namespace display
