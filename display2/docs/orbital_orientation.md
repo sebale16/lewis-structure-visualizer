@@ -21,5 +21,5 @@ z-axis points out of the screen, x points to the right of the screen, y points u
 | ------------- | --------------- | ---------------- | -------- |
 | S | 1 | 0 | - |
 | SP | 0 | 2 | {(k, pi)} |
-| SP2 | 0 | 3 | {(k, pi/3), (k, 2pi/3)} |
-| SP3 | 0 | 4 | {(k, arccos(-1/3)), (-sqrt(3)/2\*j+0.5\*k, arccos(-1/3)), (sqrt(3)/2\*j+0.5\*k, arccos(-1/3))} |
+| SP2 | 0 | 3 | {(k, 2pi/3), (k, 4pi/3)} |
+| SP3 | 0 | 4 | {(-k, arccos(-1/3)), (-sqrt(3)/2\*j+0.5\*k, arccos(-1/3)), (sqrt(3)/2\*j+0.5\*k, arccos(-1/3))} |

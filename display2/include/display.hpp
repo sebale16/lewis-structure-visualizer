@@ -6,14 +6,15 @@
 #include <webgpu/webgpu_cpp.h>
 
 #include <expected>
-#include <map>
+#include <unordered_map>
+#include <span>
 
 #ifndef WIDTH
-#define WIDTH 1920
+#define WIDTH 3200
 #endif
 
 #ifndef HEIGHT
-#define HEIGHT 1080
+#define HEIGHT 2000
 #endif
 
 namespace display {
@@ -28,9 +29,9 @@ struct Mesh {
 struct Camera {
     // location of camera
     glm::vec3 eye;
-    // where camera is point to
-    glm::vec3 target;
-    glm::vec3 up;
+    // where camera is pointing to
+    glm::vec3 target{glm::zero<glm::vec3>()};
+    glm::vec3 up{glm::vec3(0.f, 1.f, 0.f)};
     float aspect;
     float fovy;
     float znear;
@@ -38,7 +39,27 @@ struct Camera {
 
     wgpu::Buffer cameraBuffer;
 
+    float phi{glm::pi<float>() / 4.f}; // azimuth
+    float theta{glm::pi<float>() / 4.f}; // elevation
+    float rho{5.f};
+
+    void Update();
+
     glm::mat4 BuildViewProjectionMatrix() const;
+};
+
+// holds actual data that varies per instance
+struct InstanceData {
+    glm::mat4 modelMatrix;
+};
+
+// holds a single instance buffer
+struct Instances {
+    wgpu::Buffer instanceBuffer;
+    std::vector<InstanceData> instanceData;
+
+    // returns view of raw instance data
+    std::span<InstanceData> GetRawData();
 };
 
 class Application {
@@ -59,10 +80,21 @@ private:
     wgpu::BindGroupLayout cameraBindGroupLayout;
     wgpu::BindGroup cameraBindGroup;
 
-    std::map<std::string, Mesh> meshes;
+    std::unordered_map<std::string, Mesh> meshes;
 
-    /// helper to create a `Camera` and its buffer
+    std::vector<Instances> instances;
+
+    float deltaTime{0.f};
+    float lastFrame{0.f};
+
+    /// processes wasd user input to update `camera`
+    void ProcessInput();
+
+    /// helper to create a `Camera`, its buffer, and its bind group
     void CreateCamera();
+
+    /// creates a vector of `Instances` and their buffers
+    void CreateInstances();
 
     /// helper to configure surface
     void ConfigureSurface();

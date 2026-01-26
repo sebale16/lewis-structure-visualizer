@@ -11,17 +11,50 @@
 #include <iostream>
 #include <filesystem>
 
+void display::Camera::Update() {
+    // theta between 0 to pi
+    theta = glm::clamp(theta, 0.1f, glm::pi<float>() - 0.1f);
+    
+    eye.x = target.x + rho * glm::sin(theta) * glm::cos(phi);
+    eye.z = target.z + rho * glm::sin(theta) * glm::sin(phi);
+    eye.y = target.y + rho * glm::cos(theta);
+}
+
 glm::mat4 display::Camera::BuildViewProjectionMatrix() const {
     glm::mat4 view = glm::lookAt(eye, target, up);
     glm::mat4 proj = glm::perspective(fovy, aspect, znear, zfar);
     return proj * view;
 }
 
+std::span<display::InstanceData> display::Instances::GetRawData() {
+    return instanceData; // automatic conversion from vector to span
+}
+
+void display::Application::ProcessInput() {
+    float currentFrame = static_cast<float>(glfwGetTime());
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
+
+    float rotationSpeed{2.f};
+    float zoomSpeed{5.f};
+
+    // process keys
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.rho -= zoomSpeed * deltaTime; // zoom in
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.rho += zoomSpeed * deltaTime; // zoom out
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.phi -= rotationSpeed * deltaTime; // rotate left
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.phi += rotationSpeed * deltaTime; // rotate right
+
+    // constraints
+    if (camera.rho < 0.5f) camera.rho = 0.5f;
+    if (camera.rho > 50.0f) camera.rho = 50.0f;
+}
+
 void display::Application::CreateCamera() {
     camera = Camera{
-        .eye = glm::vec3(1.f, 1.f, 2.f),
-        .target = glm::zero<glm::vec3>(),
-        .up = glm::vec3(0.f, 1.f, 0.f),
         .aspect = static_cast<float>(WIDTH) / static_cast<float>(HEIGHT),
         .fovy = glm::radians(70.f),
         .znear = 0.1,
@@ -35,6 +68,64 @@ void display::Application::CreateCamera() {
         .size = sizeof(glm::mat4),
     };
     camera.cameraBuffer = this->device.CreateBuffer(&cameraBufferDesc);
+
+    /// create bind group for camera so that data in camera buffer can be read as uniform in shader
+    wgpu::BindGroupLayoutEntry cameraBindGroupLayoutEntry{
+        .binding = 0,
+        .visibility = wgpu::ShaderStage::Vertex,
+        .buffer = {
+            .type = wgpu::BufferBindingType::Uniform,
+            .hasDynamicOffset = false,
+            .minBindingSize = sizeof(glm::mat4),
+        }
+    };
+
+    wgpu::BindGroupLayoutDescriptor cameraBindGroupLayoutDesc{
+        .label = "Camera Bind Group Layout",
+        .entryCount = 1,
+        .entries = &cameraBindGroupLayoutEntry,
+    };
+    cameraBindGroupLayout = device.CreateBindGroupLayout(&cameraBindGroupLayoutDesc);
+
+    wgpu::BindGroupEntry cameraBindGroupEntry{
+        .binding = 0,
+        .buffer = camera.cameraBuffer,
+        .offset = 0,
+        .size = sizeof(glm::mat4),
+    };
+
+    wgpu::BindGroupDescriptor cameraBindGroupDesc{
+        .label = "Camera Bind Group",
+        .layout = cameraBindGroupLayout,
+        .entryCount = 1,
+        .entries = &cameraBindGroupEntry,
+    };
+    cameraBindGroup = device.CreateBindGroup(&cameraBindGroupDesc);
+}
+
+void display::Application::CreateInstances() {
+    glm::mat4 instance1 = glm::mat4(1.f);
+    glm::mat4 instance2 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1));
+    glm::mat4 instance3 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5));
+    glm::mat4 instance4 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5));
+
+    std::vector<InstanceData> instanceData = { 
+        InstanceData{.modelMatrix = instance1},
+        InstanceData{.modelMatrix = instance2},
+        InstanceData{.modelMatrix = instance3},
+        InstanceData{.modelMatrix = instance4},
+    };
+
+    wgpu::BufferDescriptor instance1BufferDesc = {
+        .label = "Instance 1 Buffer",
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+        .size = sizeof(InstanceData) * instanceData.size(),
+    };
+
+    instances = { Instances{
+        .instanceBuffer = this->device.CreateBuffer(&instance1BufferDesc),
+        .instanceData = instanceData,
+    } };
 }
 
 std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF(std::string& filePath) {
@@ -173,31 +264,43 @@ void display::Application::CreateRenderPipeline() {
     wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
     auto shaderModule = LoadShaderModule("res/shaders/shader.wgsl");
 
-    /// describe vertex buffer layout
+    /// describe vertex buffer layouts
     // define position attribute
     wgpu::VertexAttribute posAttribute{
         .format = wgpu::VertexFormat::Float32x3,
         .offset = 0,
         .shaderLocation = 0,
     };
-
-    // vector of attributes
-    std::vector<wgpu::VertexAttribute> attributes = { posAttribute };
-    wgpu::VertexBufferLayout vertexBufferLayout{
+    std::vector<wgpu::VertexAttribute> vecPosAttribute = { posAttribute };
+    wgpu::VertexBufferLayout posBufferLayout{
         .stepMode = wgpu::VertexStepMode::Vertex,
         .arrayStride = sizeof(float) * 3, // total size of one vertex
-        .attributeCount = attributes.size(),
-        .attributes = attributes.data(),
+        .attributeCount = vecPosAttribute.size(),
+        .attributes = vecPosAttribute.data(),
+    };
+
+    // define instance attributes
+    std::vector<wgpu::VertexAttribute> instanceAttributes(4);
+    for (size_t i{0}; i < 4; i++) {
+        instanceAttributes[i].format = wgpu::VertexFormat::Float32x4;
+        instanceAttributes[i].offset = i * sizeof(glm::vec4);
+        instanceAttributes[i].shaderLocation = i + 5;
+    }
+    wgpu::VertexBufferLayout instanceBufferLayout{
+        .stepMode = wgpu::VertexStepMode::Instance,
+        .arrayStride = sizeof(glm::mat4),
+        .attributeCount = instanceAttributes.size(),
+        .attributes = instanceAttributes.data(),
     };
 
     /// describe vertex pipeline state
+    std::vector<wgpu::VertexBufferLayout> vertexBufferLayouts = { posBufferLayout, instanceBufferLayout };
     wgpu::VertexState vertexState{
         .module = shaderModule,
         .entryPoint = "vs_main",
-        .bufferCount = 1,
-        .buffers = &vertexBufferLayout,
+        .bufferCount = 2,
+        .buffers = vertexBufferLayouts.data(),
     };
-
     renderPipelineDescriptor.vertex = vertexState;
 
     /// describe primitive pipeline state
@@ -206,7 +309,6 @@ void display::Application::CreateRenderPipeline() {
         .frontFace = wgpu::FrontFace::CCW,
         .cullMode = wgpu::CullMode::None,
     };
-
     renderPipelineDescriptor.primitive = primitiveState;
 
     /// describe fragment pipeline state
@@ -234,7 +336,6 @@ void display::Application::CreateRenderPipeline() {
                           // output color attachment
         .targets = &colorTargetState,
     };
-
     renderPipelineDescriptor.fragment = &fragmentState;
 
     /// describe stencil/depth fragment state
@@ -257,7 +358,6 @@ void display::Application::CreateRenderPipeline() {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = &cameraBindGroupLayout,
     };
-
     renderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
 
     /// create render pipeline
@@ -416,40 +516,8 @@ bool display::Application::Initialize(uint32_t width, uint32_t height) {
 
     CreateCamera();
 
-    /// create bind group for camera so that data in camera buffer can be read as uniform in shader
-    wgpu::BindGroupLayoutEntry cameraBindGroupLayoutEntry{
-        .binding = 0,
-        .visibility = wgpu::ShaderStage::Vertex,
-        .buffer = {
-            .type = wgpu::BufferBindingType::Uniform,
-            .hasDynamicOffset = false,
-            .minBindingSize = sizeof(glm::mat4),
-        }
-    };
+    CreateInstances();
 
-    wgpu::BindGroupLayoutDescriptor cameraBindGroupLayoutDesc{
-        .label = "Camera Bind Group Layout",
-        .entryCount = 1,
-        .entries = &cameraBindGroupLayoutEntry,
-    };
-    cameraBindGroupLayout = device.CreateBindGroupLayout(&cameraBindGroupLayoutDesc);
-
-    wgpu::BindGroupEntry cameraBindGroupEntry{
-        .binding = 0,
-        .buffer = camera.cameraBuffer,
-        .offset = 0,
-        .size = sizeof(glm::mat4),
-    };
-
-    wgpu::BindGroupDescriptor cameraBindGroupDesc{
-        .label = "Camera Bind Group",
-        .layout = cameraBindGroupLayout,
-        .entryCount = 1,
-        .entries = &cameraBindGroupEntry,
-    };
-    cameraBindGroup = device.CreateBindGroup(&cameraBindGroupDesc);
-
-    // after bind group layouts have been created, create the pipeline
     CreateRenderPipeline();
 
     return true;
@@ -505,9 +573,16 @@ void display::Application::RenderPresent() {
         .depthStencilAttachment = &depthStencilAttachment,
     };
 
-    // write camera data to buffer
+    // process user input
+    ProcessInput();
+    
+    // update and write camera data to buffer
+    camera.Update();
     glm::mat4 viewProjMat = camera.BuildViewProjectionMatrix();
     queue.WriteBuffer(camera.cameraBuffer, 0, &viewProjMat, sizeof(viewProjMat));
+
+    // update and write instance data to buffer
+    queue.WriteBuffer(instances[0].instanceBuffer, 0, instances[0].GetRawData().data(), instances[0].GetRawData().size_bytes());
 
     // record the render pass
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDesc);
@@ -520,7 +595,9 @@ void display::Application::RenderPresent() {
     auto mesh_1s = meshes.at("sp.gltf");
     renderPass.SetVertexBuffer(0, mesh_1s.vertexBuffer);
     renderPass.SetIndexBuffer(mesh_1s.indexBuffer, mesh_1s.indexFormat);
-    renderPass.DrawIndexed(mesh_1s.indexCount);
+
+    renderPass.SetVertexBuffer(1, instances[0].instanceBuffer);
+    renderPass.DrawIndexed(mesh_1s.indexCount, instances[0].instanceData.size());
 
     renderPass.End();
 
