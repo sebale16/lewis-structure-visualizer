@@ -8,7 +8,7 @@ using namespace molecule;
 #include <format>
 #include <iostream>
 
-#include <nlohmann/json.hpp>
+#include "json.hpp"
 #include <glm/gtc/constants.hpp>
 
 void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::string& dataCSVPath) {

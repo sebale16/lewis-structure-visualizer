@@ -4,12 +4,83 @@
 #include <webgpu/webgpu_glfw.h>
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
 
+#include <print>
 #include <iostream>
 
-display::Mesh display::Application::LoadMeshFromGLTF(std::string filePath) {
+std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF(std::string& filePath) {
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err;
+    std::string warn;
 
+    if (!loader.LoadASCIIFromFile(&model, &err, &warn, filePath)) {
+        return std::unexpected(std::format("Failed to parse glTF: {}", filePath));
+    }
+
+    if (!warn.empty()) {
+        std::println("Warn: {}", warn.c_str());
+    }
+
+    if (!err.empty()) {
+        return std::unexpected(std::format("Err: {}", err.c_str()));
+    }
+
+    const auto& mesh = model.meshes[0];
+    const auto& primitive = mesh.primitives[0];
+    display::Mesh outputMesh;
+
+    /// vertices
+    // go to accessor at index POSITION
+    const auto& posAccessor = model.accessors.at(primitive.attributes.at("POSITION"));
+    // which bufferView to look at based on what index the accessor at index "POSITION" shows
+    const auto& posView = model.bufferViews.at(posAccessor.bufferView);
+    const auto& posBuffer = model.buffers.at(posView.buffer);
+    
+    // calculate size to create buffer
+    size_t vertexDataSize = posAccessor.count * sizeof(float) * 3;
+    // pointer to actual data
+    const void* vertexDataPtr = &posBuffer.data[posView.byteOffset + posAccessor.byteOffset];
+
+    // create vertex buffer
+    wgpu::BufferDescriptor vertexBufferDesc{
+        .label = std::format("{} Vertex Buffer Descriptor", filePath).c_str(),
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+        .size = vertexDataSize,
+    };
+    outputMesh.vertexBuffer = this->device.CreateBuffer(&vertexBufferDesc);
+    this->queue.WriteBuffer(outputMesh.vertexBuffer, 0, vertexDataPtr, vertexDataSize);
+
+    /// indices
+    // go to accessor at "indices"
+    const auto& indAccessor = model.accessors.at(primitive.indices);
+    const auto& indView = model.bufferViews.at(indAccessor.bufferView);
+    const auto& indBuffer = model.buffers.at(indView.buffer);
+
+    outputMesh.indexCount = static_cast<uint32_t>(indAccessor.count);
+    size_t indexDataSize = indAccessor.count * tinygltf::GetComponentSizeInBytes(indAccessor.componentType);
+    const void* indexDataPtr = &indBuffer.data[indView.byteOffset + indAccessor.byteOffset];
+
+    // map gltf type to webgpu index format
+    if (indAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+        outputMesh.indexFormat = wgpu::IndexFormat::Uint16;
+    } else {
+        outputMesh.indexFormat = wgpu::IndexFormat::Uint32;
+    }
+
+    // create index buffer
+    wgpu::BufferDescriptor indexBufferDesc{
+        .label = std::format("{} Index Buffer Descriptor", filePath).c_str(),
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index,
+        // ensure 4-byte alignment: round up next multiple of 4 and then mask last two bits to make a multiple of 4
+        .size = (indexDataSize + 3) & ~3,
+    };
+    outputMesh.indexBuffer = this->device.CreateBuffer(&indexBufferDesc);
+    this->queue.WriteBuffer(outputMesh.indexBuffer, 0, indexDataPtr, indexDataSize);
+
+    return outputMesh;
 }
 
 void display::Application::ConfigureSurface() {

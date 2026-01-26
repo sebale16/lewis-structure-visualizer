@@ -3,6 +3,8 @@
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 
+#include <expected>
+
 #ifndef WIDTH
 #define WIDTH 1920
 #endif
@@ -52,8 +54,8 @@ public:
     /// returns true if app should keep rendering; necessary because window is a private member
     bool KeepRunning();
 
-    /// constructs a mesh with point and index buffers from a gltf file
-    Mesh LoadMeshFromGLTF(std::string filePath);
+    /// constructs a mesh with a point and index buffer from a gltf file; takes first mesh of loaded model
+    std::expected<Mesh, std::string> LoadMeshFromGLTF(std::string& filePath);
 };
 
 } // namespace display
