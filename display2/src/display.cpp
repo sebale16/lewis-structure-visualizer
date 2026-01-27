@@ -764,7 +764,6 @@ void display::Application::RenderPresent() {
         renderPass.SetVertexBuffer(1, instance.instanceBuffer);
         // color
         renderPass.SetBindGroup(1, instance.colorBindGroup);
-
         renderPass.DrawIndexed(meshes.at(orbitalType).indexCount, instance.instanceData.size());
     }
 

@@ -302,6 +302,7 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
                         );
                         break;
                     case Geometry::TrigonalPlanar:
+                    case Geometry::Bent1Lone: {
                         glm::quat rot = glm::angleAxis(2.f * index * glm::pi<float>() / 3.f, glm::vec3(0.f, 0.f, 1.f));
                         bondedAtoms.emplace_back(
                             BondedAtom{
@@ -311,6 +312,27 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
                             }
                         );
                         break;
+                    }
+                    case Geometry::Tetrahedral:
+                    case Geometry::TrigonalPyramidal:
+                    case Geometry::Bent2Lone: {
+                        glm::quat rot = glm::identity<glm::quat>();
+                        if (index == 1) {
+                            rot = glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0.f, 0.f, -1.f));
+                        } else if (index == 2) {
+                            rot = glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5));
+                        } else if (index == 3) {
+                            rot = glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5));
+                        }
+                        bondedAtoms.emplace_back(
+                            BondedAtom{
+                                .wPtrAtom = atom,
+                                .loc = rot * glm::vec3(-shift, 0.f, 0.f),
+                                .rot = rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1)),
+                            }
+                        );
+                        break;
+                    }
                 }
             }
             return bondedAtoms;
