@@ -11,14 +11,19 @@
 #include <span>
 
 #ifndef WIDTH
-#define WIDTH 1920
+#define WIDTH 3200
 #endif
 
 #ifndef HEIGHT
-#define HEIGHT 1080
+#define HEIGHT 2000
 #endif
 
 namespace display {
+
+struct Vertex {
+    glm::vec3 pos;
+    glm::vec3 norm;
+};
 
 struct Mesh {
     wgpu::Buffer vertexBuffer;

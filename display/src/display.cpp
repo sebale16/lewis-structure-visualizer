@@ -4,6 +4,7 @@
 #include <webgpu/webgpu_glfw.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -170,7 +171,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&sOrbitalVertexBufferDesc),
                 .instanceData = sInstances,
                 .colorBuffer = this->device.CreateBuffer(&sOrbitalColorBufferDesc),
-                .color = glm::vec4(1.f, 1.f, 0.f, 1.f),
+                .color = glm::vec4(0.3f, 0.f, 0.3f, 1.f),
         };
 
         wgpu::BindGroupEntry colorBindGroupEntry{
@@ -203,7 +204,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&spOrbitalVertexBufferDesc),
                 .instanceData = spInstances,
                 .colorBuffer = this->device.CreateBuffer(&spOrbitalColorBufferDesc),
-                .color = glm::vec4(0.f, 0.f, 1.f, 1.f),
+                .color = glm::vec4(0.f, 0.3f, 0.45f, 1.f),
         };
         wgpu::BindGroupEntry colorBindGroupEntry{
             .binding = 0,
@@ -235,7 +236,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&pOrbitalVertexBufferDesc),
                 .instanceData = pInstances,
                 .colorBuffer = this->device.CreateBuffer(&pOrbitalColorBufferDesc),
-                .color = glm::vec4(0.30f, 0.f, 0.08f, 1.f),
+                .color = glm::vec4(0.45f, 0.f, 0.2f, 1.f),
         };
         wgpu::BindGroupEntry colorBindGroupEntry{
             .binding = 0,
@@ -280,30 +281,57 @@ std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF
     const auto& primitive = mesh.primitives[0];
     display::Mesh outputMesh;
 
-    /// vertices
+    /// vertices + normals
     // go to accessor at index POSITION
     const auto& posAccessor = model.accessors.at(primitive.attributes.at("POSITION"));
+    // go to accessor at index NORMAL
+    const auto& normAccessor = model.accessors.at(primitive.attributes.at("NORMAL"));
+
     // which bufferView to look at based on what index the accessor at index "POSITION" shows
     const auto& posView = model.bufferViews.at(posAccessor.bufferView);
     const auto& posBuffer = model.buffers.at(posView.buffer);
+    // which bufferView to look at based on what index the accessor at index "NORMAL" shows
+    const auto& normView = model.bufferViews.at(normAccessor.bufferView);
+    const auto& normBuffer = model.buffers.at(normView.buffer);
+    
     
     // calculate size to create buffer
-    size_t vertexDataSize = posAccessor.count * sizeof(float) * 3;
+    size_t posDataSize = posAccessor.count * sizeof(float) * 3;
     // pointer to actual data
-    const void* vertexDataPtr = &posBuffer.data[posView.byteOffset + posAccessor.byteOffset];
+    const float* posDataPtr = reinterpret_cast<const float *>(&posBuffer.data[posView.byteOffset + posAccessor.byteOffset]);
     // check that pointer contains data
-    if (vertexDataPtr == nullptr) {
-        return std::unexpected(std::format("{} has invalid vertex data", filePath));
+    if (posDataPtr == nullptr) {
+        return std::unexpected(std::format("{} has invalid pos data", filePath));
+    }
+
+    // calculate size to create buffer
+    size_t normDataSize = normAccessor.count * sizeof(float) * 3;
+    // pointer to actual data
+    const float* normDataPtr = reinterpret_cast<const float *>(&normBuffer.data[normView.byteOffset + normAccessor.byteOffset]);
+    // check that pointer contains data
+    if (normDataPtr == nullptr) {
+        return std::unexpected(std::format("{} has invalid normal data", filePath));
+    }
+
+    // stores each pos's position and normal
+    std::vector<Vertex> vertices;
+    for (size_t i = 0; i < posAccessor.count; i++) {
+        vertices.emplace_back(
+            Vertex{
+                .pos = glm::make_vec3(&posDataPtr[i * 3]),
+                .norm = glm::make_vec3(&normDataPtr[i * 3]),
+            }
+        );
     }
 
     // create vertex buffer
     wgpu::BufferDescriptor vertexBufferDesc{
-        .label = std::format("{} Vertex Buffer Descriptor", filePath).c_str(),
+        .label = std::format("{} Position + Normal Buffer", filePath).c_str(),
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
-        .size = vertexDataSize,
+        .size = vertices.size() * sizeof(Vertex),
     };
     outputMesh.vertexBuffer = this->device.CreateBuffer(&vertexBufferDesc);
-    this->queue.WriteBuffer(outputMesh.vertexBuffer, 0, vertexDataPtr, vertexDataSize);
+    this->queue.WriteBuffer(outputMesh.vertexBuffer, 0, vertices.data(), vertices.size() * sizeof(Vertex));
 
     /// indices
     // go to accessor at "indices"
@@ -401,12 +429,19 @@ void display::Application::CreateRenderPipeline() {
         .offset = 0,
         .shaderLocation = 0,
     };
-    std::vector<wgpu::VertexAttribute> vecPosAttribute = { posAttribute };
+    // define normal attribute
+    wgpu::VertexAttribute normAttribute{
+        .format = wgpu::VertexFormat::Float32x3,
+        .offset = offsetof(Vertex, norm),
+        .shaderLocation = 1,
+    };
+
+    std::vector<wgpu::VertexAttribute> vertexAttributes = { posAttribute, normAttribute };
     wgpu::VertexBufferLayout posBufferLayout{
         .stepMode = wgpu::VertexStepMode::Vertex,
-        .arrayStride = sizeof(float) * 3, // total size of one vertex
-        .attributeCount = vecPosAttribute.size(),
-        .attributes = vecPosAttribute.data(),
+        .arrayStride = sizeof(Vertex),
+        .attributeCount = vertexAttributes.size(),
+        .attributes = vertexAttributes.data(),
     };
 
     // define instance attributes
