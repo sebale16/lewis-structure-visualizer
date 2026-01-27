@@ -1,6 +1,6 @@
-display2/.cache/
-display2/build/
+display/.cache/
+display/build/
 target/
 *.json
 *lock*
-display2/bin
+display/bin
