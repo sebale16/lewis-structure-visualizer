@@ -4,6 +4,7 @@ using namespace molecule;
 #include "json.hpp"
 #include <glm/gtc/constants.hpp>
 
+#include <ranges>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -17,26 +18,29 @@ std::vector<std::pair<OrbitalType, glm::quat>> BondedAtom::ToMatrix() const {
     // orientation is dependent on hybridization of the atom
     switch (this->wPtrAtom.lock()->hybridization) {
         case molecule::Hybridization::s:
-            orbitalRots.push_back(std::make_pair(OrbitalType::s, glm::quat()));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::s, glm::quat()));
             break;
         case molecule::Hybridization::sp:
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1))));
             break;
         case molecule::Hybridization::sp2:
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(2.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(4.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(2.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(4.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
             break;
         case molecule::Hybridization::sp3:
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1))));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5))));
-            orbitalRots.push_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5))));
+            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5))));
             break;
     }
 
-    // handle p orbitals
+    // handle p orbitals: perpendicular to sp orbital
+    for (int i = 0; i < this->wPtrAtom.lock()->pOrbitalCount; i++) {
+        orbitalRots.emplace_back(std::make_pair(OrbitalType::p, glm::angleAxis(glm::pi<float>() / 2.f, glm::vec3(0, 1-i, i))));
+    }
 
     return orbitalRots;
 }
@@ -238,54 +242,78 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
     if (this->atoms.size() == 0) return std::unexpected("Cannot call on empty molecule!");
     auto geometry = this->ComputeGeometry().value();
     std::println("Geometry: {}", (int) geometry);
-    switch (geometry) {
-        case Geometry::Single:
-            return std::expected<std::vector<BondedAtom>, std::string>({
-                BondedAtom {
-                    .wPtrAtom = centralAtom,
-                    .loc = glm::vec3(0.f), // located at center
-                    .rot = glm::identity<glm::quat>() // no rotation quaternion
-                }
-            });
 
-        case Geometry::Linear2:
-            // place centralAtom at center
-            auto bondedCentralAtom = BondedAtom {
-                .wPtrAtom = centralAtom,
-                .loc = glm::vec3(0.f),
-                .rot = glm::identity<glm::quat>(),
-            };
+    // place centralAtom at center
+    auto bondedCentralAtom = BondedAtom {
+        .wPtrAtom = centralAtom,
+        .loc = glm::vec3(0.f),
+        .rot = glm::identity<glm::quat>(),
+    };
 
-            // second atom location will depend on hybridization of centralAtom and its own hybridization
-            // since one orbital will always be in positive x direction, if second atom is not hybridized,
-            // then center of second atom should be slightly more in positive x direction, depending on protonCount of second atom
-            // if second atom is hybridized, second atom should be at such a distance so that orbitals are overlapping and symmetric
+    // view over elements that are not the central atom
+    auto nonCentralAtomsFilter = atoms | std::views::filter([this](const auto& a) {
+        return centralAtom.owner_before(a) || a.owner_before(centralAtom);
+    });
 
-            // find atom that is not centralAtom
-            auto secondAtomIt = std::find_if(atoms.begin(), atoms.end(), [this](const auto& a) {
-                return centralAtom.owner_before(a) || a.owner_before(centralAtom);
-            });
-            if (secondAtomIt != atoms.end()) {
-                auto secondAtom = *secondAtomIt;
-                auto bondedSecondAtom = BondedAtom { .wPtrAtom = std::weak_ptr<Atom>(secondAtom) };
-                if (secondAtom->hybridization == Hybridization::s) {
-                    // x is shifted by a multiplier
-                    bondedSecondAtom.loc = glm::vec3(-(1.f + S_ORBITAL_SHIFT * (secondAtom->protonCount)), 0.f, 0.f);
-                    bondedSecondAtom.rot = glm::identity<glm::quat>();
-                } else {
-                    // x is shifted; also second atom must be rotated so that one of its orbitals points in the -x direction
-                    bondedSecondAtom.loc = glm::vec3(-SP_ORBITAL_SHIFT, 0.f, 0.f);
-                    bondedSecondAtom.rot = glm::angleAxis(glm::pi<float>(), glm::vec3(0.f, 0.f, 1.f));
-                }
-                // move both atoms so that halfway distance is at (0,0,0) if CENTRALIZE
+    if (geometry == Geometry::Single) {
+        return std::expected<std::vector<BondedAtom>, std::string>({ bondedCentralAtom });
+    } else if (geometry == Geometry::Linear2) {
+        // second atom location will depend on hybridization of centralAtom and its own hybridization
+        // since one orbital will always be in positive x direction, if second atom is not hybridized,
+        // then center of second atom should be slightly more in positive x direction, depending on protonCount of second atom
+        // if second atom is hybridized, second atom should be at such a distance so that orbitals are overlapping and symmetric
+
+        if (!nonCentralAtomsFilter.empty()) {
+            auto secondAtom = nonCentralAtomsFilter.front();
+            auto bondedSecondAtom = BondedAtom { .wPtrAtom = std::weak_ptr<Atom>(secondAtom) };
+            if (secondAtom->hybridization == Hybridization::s) {
+                // x is shifted by a multiplier
+                bondedSecondAtom.loc = glm::vec3(-(S_ORBITAL_SHIFT * (secondAtom->protonCount)), 0.f, 0.f);
+                bondedSecondAtom.rot = glm::identity<glm::quat>();
+            } else {
+                // x is shifted; also second atom must be rotated so that one of its orbitals points in the -x direction
+                bondedSecondAtom.loc = glm::vec3(-SP_ORBITAL_SHIFT, 0.f, 0.f);
+                bondedSecondAtom.rot = glm::angleAxis(glm::pi<float>(), glm::vec3(0.f, 0.f, 1.f));
+            }
+            // move both atoms so that halfway distance is at (0,0,0) if CENTRALIZE
 #if CENTRALIZE
-                auto distance = bondedSecondAtom.loc.x;
-                bondedCentralAtom.loc.x -= distance / 2.f;
-                bondedSecondAtom.loc.x -= distance / 2.f;
+            auto distance = bondedSecondAtom.loc.x;
+            bondedCentralAtom.loc.x -= distance / 2.f;
+            bondedSecondAtom.loc.x -= distance / 2.f;
 #endif
-                return std::expected<std::vector<BondedAtom>, std::string>({
-                        bondedCentralAtom, bondedSecondAtom
-                });
-            } else return std::unexpected("Could not find second atom!");
+            return std::expected<std::vector<BondedAtom>, std::string>({
+                    bondedCentralAtom, bondedSecondAtom
+            });
+        } else return std::unexpected("Could not find second atom!");
+    } else {
+        if (!nonCentralAtomsFilter.empty()) {
+            std::vector<BondedAtom> bondedAtoms = {bondedCentralAtom};
+            for (auto [index, atom] : nonCentralAtomsFilter | std::views::enumerate) {
+                auto shift = atom->hybridization == Hybridization::s ? S_ORBITAL_SHIFT : SP_ORBITAL_SHIFT;
+                switch (geometry) {
+                    case Geometry::Linear:
+                        bondedAtoms.emplace_back(
+                            BondedAtom{
+                                .wPtrAtom = atom,
+                                .loc = glm::vec3(-pow(-1, index) * shift, 0.f, 0.f),
+                                .rot = glm::angleAxis((index + 1) * glm::pi<float>(), glm::vec3(0.f, 0.f, 1.f))
+                                     * glm::angleAxis((index - 1) * glm::pi<float>() / 2.f, glm::vec3(1.f, 0.f, 0.f)), // additional rotation so that p orbitals line up
+                            }
+                        );
+                        break;
+                    case Geometry::TrigonalPlanar:
+                        glm::quat rot = glm::angleAxis(2.f * index * glm::pi<float>() / 3.f, glm::vec3(0.f, 0.f, 1.f));
+                        bondedAtoms.emplace_back(
+                            BondedAtom{
+                                .wPtrAtom = atom,
+                                .loc = rot * glm::vec3(-shift, 0.f, 0.f),
+                                .rot = rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1)),
+                            }
+                        );
+                        break;
+                }
+            }
+            return bondedAtoms;
+        } else return std::unexpected("Could not find non-central atoms!");
     }
 }

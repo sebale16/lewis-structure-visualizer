@@ -119,7 +119,7 @@ private:
 
 public:
     /// initializes application and returns success or failure
-    bool Initialize(uint32_t width, uint32_t height);
+    bool Initialize(uint32_t width, uint32_t height, std::string moleculePath);
 
     /// render and present a frame
     void RenderPresent();

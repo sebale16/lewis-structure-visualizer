@@ -7,10 +7,10 @@
 #include <emscripten/emscripten.h>
 #endif
 
-int main() {
+int main(int, char **argv) {
     display::Application app;
 
-    if (!app.Initialize(WIDTH, HEIGHT))
+    if (!app.Initialize(WIDTH, HEIGHT, argv[1]))
         return EXIT_FAILURE;
 
 #ifdef __EMSCRIPTEN__

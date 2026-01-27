@@ -534,7 +534,7 @@ wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
     return targetView;
 }
 
-bool display::Application::Initialize(uint32_t width, uint32_t height) {
+bool display::Application::Initialize(uint32_t width, uint32_t height, std::string moleculePath) {
     static const auto kTimedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
     wgpu::InstanceDescriptor instance_desc = {
         .nextInChain = nullptr,
@@ -669,7 +669,7 @@ bool display::Application::Initialize(uint32_t width, uint32_t height) {
     colorBindGroupLayout = device.CreateBindGroupLayout(&colorBindGroupLayoutDesc);
 
     // create instances from solved molecule
-    std::string jsonFilePath = "/home/seb/projects/lewis-structure-visualizer/solver/out/N2_0.json";
+    std::string jsonFilePath = "/home/seb/projects/lewis-structure-visualizer/solver/out/" + moleculePath;
     std::string csvFilePath = "/home/seb/projects/lewis-structure-visualizer/data/data.csv";
     molecule::Molecule molecule(jsonFilePath, csvFilePath);
     auto bondedAtoms = molecule.ComputeAtomLocsRots().value();

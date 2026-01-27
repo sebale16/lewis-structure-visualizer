@@ -9,7 +9,7 @@
 
 // used to define how much should S hybridized atom be shifted depending on its protonCount
 #ifndef S_ORBITAL_SHIFT
-#define S_ORBITAL_SHIFT 1.f
+#define S_ORBITAL_SHIFT 2.f
 #endif
 
 // how far away atoms are from central atom if bond is hybridized
