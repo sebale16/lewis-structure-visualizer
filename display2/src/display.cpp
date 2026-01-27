@@ -170,7 +170,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&sOrbitalVertexBufferDesc),
                 .instanceData = sInstances,
                 .colorBuffer = this->device.CreateBuffer(&sOrbitalColorBufferDesc),
-                .color = glm::vec4(1.f, 0.f, 1.f, 1.f),
+                .color = glm::vec4(1.f, 1.f, 0.f, 1.f),
         };
 
         wgpu::BindGroupEntry colorBindGroupEntry{
@@ -203,7 +203,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&spOrbitalVertexBufferDesc),
                 .instanceData = spInstances,
                 .colorBuffer = this->device.CreateBuffer(&spOrbitalColorBufferDesc),
-                .color = glm::vec4(1.f, 0.f, 0.f, 1.f),
+                .color = glm::vec4(0.f, 0.f, 1.f, 1.f),
         };
         wgpu::BindGroupEntry colorBindGroupEntry{
             .binding = 0,
@@ -235,7 +235,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&pOrbitalVertexBufferDesc),
                 .instanceData = pInstances,
                 .colorBuffer = this->device.CreateBuffer(&pOrbitalColorBufferDesc),
-                .color = glm::vec4(0.f, 0.f, 1.f, 1.f),
+                .color = glm::vec4(0.30f, 0.f, 0.08f, 1.f),
         };
         wgpu::BindGroupEntry colorBindGroupEntry{
             .binding = 0,
