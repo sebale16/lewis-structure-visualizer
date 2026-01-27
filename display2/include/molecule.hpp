@@ -14,12 +14,12 @@
 
 // how far away atoms are from central atom if bond is hybridized
 #ifndef SP_ORBITAL_SHIFT
-#define SP_ORBITAL_SHIFT 2.f
+#define SP_ORBITAL_SHIFT 3.f
 #endif
 
 // scale S orbital model
 #ifndef S_ORBITAL_SCALE
-#define S_ORBITAL_SCALE 1.f
+#define S_ORBITAL_SCALE 0.25f
 #endif
 
 // scale SP orbital model
@@ -27,9 +27,14 @@
 #define SP_ORBITAL_SCALE 1.f
 #endif
 
+// scale P orbital model
+#ifndef P_ORBITAL_SCALE
+#define P_ORBITAL_SCALE 1.f
+#endif
+
 // should molecule with 2 atoms be placed so that midway point is at (0,0,0)
 #ifndef CENTRALIZE
-#define CENTRALIZE 0
+#define CENTRALIZE 1
 #endif
 
 namespace molecule {
@@ -82,6 +87,12 @@ enum class BondType {
     PI,
 };
 
+enum class OrbitalType {
+    s,
+    sp,
+    p,
+};
+
 // atom itself does not have rotation trait
 // a given hybridization produces same orientation of orbitals as outlined in docs
 // rotation is given by ComputeAtomLocsRots and saved in BondedAtom
@@ -103,6 +114,10 @@ struct BondedAtom {
     std::weak_ptr<Atom> wPtrAtom;
     glm::vec3 loc;
     glm::quat rot;
+
+    // function to transform an atom into its matrix represention: 
+    // each element of the vector is a pair of an orbital type with its orientation
+    std::vector<std::pair<OrbitalType, glm::quat>> ToMatrix() const;
 };
 
 class Molecule {
@@ -115,6 +130,9 @@ private:
     std::weak_ptr<Atom> centralAtom;
 
 public:
+    // constructor for filling through json
+    Molecule(const std::string& jsonPath, const std::string& dataCSVPath);
+
     // fills molecule with precomputed data from solver
     void FillMoleculeFromJSON(const std::string& jsonPath, const std::string& dataCSVPath);
 
@@ -128,19 +146,6 @@ public:
 };
 
 } // namespace model
-
-// steps for displaying:
-// 1. figure out center of central atom:
-//      a. if molecule is monatomic, then center is (0, 0, 0)
-//      b. if molecule is diatomic, then center is halfway between both atoms
-// 2. each enum corresponding to hybridization will produce different layout of
-// orbitals
-// 3. to place non-central atoms, angle and distance from center will determine
-// location of center of other atoms
-//      a. the angle used to calculate rotation of orbitals will be used to
-//          figure out the line on which to translate the atom from the origin
-//          of the central atom
-//      b. determine formula for rotation
 
 // when zoomed out, element names should be written on the atoms
 // start fading out when zooming in and then nucleus should be visible

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.hpp"
+#include "molecule.hpp"
 
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
@@ -10,11 +11,11 @@
 #include <span>
 
 #ifndef WIDTH
-#define WIDTH 3200
+#define WIDTH 1920
 #endif
 
 #ifndef HEIGHT
-#define HEIGHT 2000
+#define HEIGHT 1080
 #endif
 
 namespace display {
@@ -58,6 +59,10 @@ struct Instances {
     wgpu::Buffer instanceBuffer;
     std::vector<InstanceData> instanceData;
 
+    wgpu::Buffer colorBuffer;
+    wgpu::BindGroup colorBindGroup;
+    glm::vec4 color;
+
     // returns view of raw instance data
     std::span<InstanceData> GetRawData();
 };
@@ -79,13 +84,14 @@ private:
     Camera camera;
     wgpu::BindGroupLayout cameraBindGroupLayout;
     wgpu::BindGroup cameraBindGroup;
+    float deltaTime{0.f};
+    float lastFrame{0.f};
+
+    wgpu::BindGroupLayout colorBindGroupLayout;
 
     std::unordered_map<std::string, Mesh> meshes;
 
-    std::vector<Instances> instances;
-
-    float deltaTime{0.f};
-    float lastFrame{0.f};
+    std::unordered_map<std::string, Instances> instances;
 
     /// processes wasd user input to update `camera`
     void ProcessInput();
@@ -93,14 +99,14 @@ private:
     /// helper to create a `Camera`, its buffer, and its bind group
     void CreateCamera();
 
-    /// creates a vector of `Instances` and their buffers
-    void CreateInstances();
+    /// creates a vector of `Instances` and their buffers based on `molecule`
+    void CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms);
 
     /// helper to configure surface
     void ConfigureSurface();
 
     /// helper to initialize models to be render
-    void LoadMeshes(std::vector<std::string>& filePaths);
+    void LoadMeshes(const std::vector<std::string>& filePaths);
 
     /// loads a shader into a shader module
     wgpu::ShaderModule LoadShaderModule(const std::string& filePath);
@@ -122,7 +128,7 @@ public:
     bool KeepRunning();
 
     /// constructs a mesh with a point and index buffer from a gltf file; takes first mesh of loaded model
-    std::expected<Mesh, std::string> LoadMeshFromGLTF(std::string& filePath);
+    std::expected<Mesh, std::string> LoadMeshFromGLTF(const std::string& filePath);
 };
 
 } // namespace display

@@ -2,6 +2,8 @@
 
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_glfw.h>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -103,32 +105,160 @@ void display::Application::CreateCamera() {
     cameraBindGroup = device.CreateBindGroup(&cameraBindGroupDesc);
 }
 
-void display::Application::CreateInstances() {
-    glm::mat4 instance1 = glm::mat4(1.f);
-    glm::mat4 instance2 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1));
-    glm::mat4 instance3 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5));
-    glm::mat4 instance4 = glm::rotate(glm::mat4(1.f), static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5));
+void display::Application::CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms) {
+    std::print("Creating instances for...");
+    for (auto& a : bondedAtoms) {
+        std::print("{} ", a.wPtrAtom.lock()->name);
+    }
+    std::println();
+    // create an instance data vector for each type of orbital: s, sp, p
+    std::vector<InstanceData> sInstances;
+    std::vector<InstanceData> spInstances;
+    std::vector<InstanceData> pInstances;
+    // build translation + rotation matrix for each atom that will be applied to its set of orbitals
+    // translation + rotation are from locs + rots
+    for (const auto& atom : bondedAtoms) {
+        // model consists of each atom with its orbitals
+        auto bondQuatPairs = atom.ToMatrix();
+        // apply transforms to each of the atom's orbitals
+        for (auto& bQPair : bondQuatPairs) {
+            glm::mat4 model = glm::mat4(1.0f);
 
-    std::vector<InstanceData> instanceData = { 
-        InstanceData{.modelMatrix = instance1},
-        InstanceData{.modelMatrix = instance2},
-        InstanceData{.modelMatrix = instance3},
-        InstanceData{.modelMatrix = instance4},
-    };
+            // translate: move the whole thing to the atom's world position
+            model = glm::translate(model, atom.loc);
 
-    wgpu::BufferDescriptor instance1BufferDesc = {
-        .label = "Instance 1 Buffer",
-        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
-        .size = sizeof(InstanceData) * instanceData.size(),
-    };
+            // rotate: apply the atom's overall rotation, then the specific orbital's rotation
+            model = model * glm::toMat4(atom.rot);
+            model = model * glm::toMat4(bQPair.second);
 
-    instances = { Instances{
-        .instanceBuffer = this->device.CreateBuffer(&instance1BufferDesc),
-        .instanceData = instanceData,
-    } };
+            // scale: scale the mesh at its local origin
+            float scaleFactor = 1.0f;
+            if (bQPair.first == molecule::OrbitalType::s) scaleFactor = S_ORBITAL_SCALE;
+            else if (bQPair.first == molecule::OrbitalType::sp) scaleFactor = SP_ORBITAL_SCALE;
+            else if (bQPair.first == molecule::OrbitalType::p) scaleFactor = P_ORBITAL_SCALE;
+
+            model = glm::scale(model, glm::vec3(scaleFactor));
+
+            // depending on the orbital type, add to corresponding vector
+            switch (bQPair.first) {
+                case molecule::OrbitalType::s:
+                    sInstances.push_back(InstanceData { .modelMatrix = model });
+                    break;
+                case molecule::OrbitalType::sp:
+                    spInstances.push_back(InstanceData { .modelMatrix = model });
+                    break;
+                case molecule::OrbitalType::p:
+                    pInstances.push_back(InstanceData { .modelMatrix = model });
+                    break;
+            }
+        }
+    }
+
+    // only create buffers and bind groups for which exist orbital instances
+    if (sInstances.size() > 0) {
+        wgpu::BufferDescriptor sOrbitalVertexBufferDesc = {
+            .label = "s Orbital Vertex Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+            .size = sizeof(InstanceData) * sInstances.size(),
+        };
+        wgpu::BufferDescriptor sOrbitalColorBufferDesc = {
+            .label = "s Orbital Color Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
+            .size = sizeof(glm::vec4),
+        };
+        instances["s"] = Instances{
+                .instanceBuffer = this->device.CreateBuffer(&sOrbitalVertexBufferDesc),
+                .instanceData = sInstances,
+                .colorBuffer = this->device.CreateBuffer(&sOrbitalColorBufferDesc),
+                .color = glm::vec4(1.f, 0.f, 1.f, 1.f),
+        };
+
+        wgpu::BindGroupEntry colorBindGroupEntry{
+            .binding = 0,
+            .buffer = instances["s"].colorBuffer,
+            .offset = 0,
+            .size = sizeof(glm::vec4),
+        };
+
+        wgpu::BindGroupDescriptor colorBindGroupDesc{
+            .label = "s Orbital Color Bind Group",
+            .layout = colorBindGroupLayout,
+            .entryCount = 1,
+            .entries = &colorBindGroupEntry,
+        };
+        instances["s"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
+    }
+    if (spInstances.size() > 0) {
+        wgpu::BufferDescriptor spOrbitalVertexBufferDesc = {
+            .label = "sp Orbital Instance Vertex Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+            .size = sizeof(InstanceData) * spInstances.size(),
+        };
+        wgpu::BufferDescriptor spOrbitalColorBufferDesc = {
+            .label = "sp Orbital Color Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
+            .size = sizeof(glm::vec4),
+        };
+        instances["sp"] = Instances {
+                .instanceBuffer = this->device.CreateBuffer(&spOrbitalVertexBufferDesc),
+                .instanceData = spInstances,
+                .colorBuffer = this->device.CreateBuffer(&spOrbitalColorBufferDesc),
+                .color = glm::vec4(1.f, 0.f, 0.f, 1.f),
+        };
+        wgpu::BindGroupEntry colorBindGroupEntry{
+            .binding = 0,
+            .buffer = instances["sp"].colorBuffer,
+            .offset = 0,
+            .size = sizeof(glm::vec4),
+        };
+
+        wgpu::BindGroupDescriptor colorBindGroupDesc{
+            .label = "sp Orbital Color Bind Group",
+            .layout = colorBindGroupLayout,
+            .entryCount = 1,
+            .entries = &colorBindGroupEntry,
+        };
+        instances["sp"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
+    }
+    if (pInstances.size() > 0) {
+        wgpu::BufferDescriptor pOrbitalVertexBufferDesc = {
+            .label = "p Orbital Vertex Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+            .size = sizeof(InstanceData) * pInstances.size(),
+        };
+        wgpu::BufferDescriptor pOrbitalColorBufferDesc = {
+            .label = "p Orbital Color Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
+            .size = sizeof(glm::vec4),
+        };
+        instances["p"] = Instances{
+                .instanceBuffer = this->device.CreateBuffer(&pOrbitalVertexBufferDesc),
+                .instanceData = pInstances,
+                .colorBuffer = this->device.CreateBuffer(&pOrbitalColorBufferDesc),
+                .color = glm::vec4(0.f, 0.f, 1.f, 1.f),
+        };
+        wgpu::BindGroupEntry colorBindGroupEntry{
+            .binding = 0,
+            .buffer = instances["p"].colorBuffer,
+            .offset = 0,
+            .size = sizeof(glm::vec4),
+        };
+
+        wgpu::BindGroupDescriptor colorBindGroupDesc{
+            .label = "p Orbital Color Bind Group",
+            .layout = colorBindGroupLayout,
+            .entryCount = 1,
+            .entries = &colorBindGroupEntry,
+        };
+        instances["p"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
+    }
+
+    std::println("s instance count: {}", sInstances.size());
+    std::println("sp instance count: {}", spInstances.size());
+    std::println("p instance count: {}", pInstances.size());
 }
 
-std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF(std::string& filePath) {
+std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF(const std::string& filePath) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
@@ -209,10 +339,10 @@ std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF
     return outputMesh;
 }
 
-void display::Application::LoadMeshes(std::vector<std::string>& filePaths) {
+void display::Application::LoadMeshes(const std::vector<std::string>& filePaths) {
     // assuming each file path is one mesh
-    for (auto& fp : filePaths) {
-        std::string fileName = std::filesystem::path(fp).filename().string();
+    for (const auto& fp : filePaths) {
+        std::string fileName = std::filesystem::path(fp).stem().string();
         // check if already loaded
         if (meshes.contains(fileName)) {
             continue;
@@ -353,10 +483,14 @@ void display::Application::CreateRenderPipeline() {
     renderPipelineDescriptor.multisample = multisampleState;
 
     /// describe pipeline layout
+    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
+        cameraBindGroupLayout,
+        colorBindGroupLayout,
+    };
     wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
         .label = "Pipeline Layout Descriptor",
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = &cameraBindGroupLayout,
+        .bindGroupLayoutCount = 2,
+        .bindGroupLayouts = bindGroupLayouts.data(),
     };
     renderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
 
@@ -509,14 +643,38 @@ bool display::Application::Initialize(uint32_t width, uint32_t height) {
     ConfigureSurface();
 
     std::vector<std::string> resPaths = {
-        "res/orbitals/1s.gltf",
+        "res/orbitals/s.gltf",
         "res/orbitals/sp.gltf",
+        "res/orbitals/p.gltf",
     };
     LoadMeshes(resPaths);
 
     CreateCamera();
 
-    CreateInstances();
+    /// create bind group for color so that it can be read as uniform in shader; one per app
+    wgpu::BindGroupLayoutEntry colorBindGroupLayoutEntry{
+        .binding = 0,
+        .visibility = wgpu::ShaderStage::Vertex,
+        .buffer = {
+            .type = wgpu::BufferBindingType::Uniform,
+            .hasDynamicOffset = false,
+            .minBindingSize = sizeof(glm::vec4),
+        }
+    };
+    wgpu::BindGroupLayoutDescriptor colorBindGroupLayoutDesc{
+        .label = "Color Bind Group Layout",
+        .entryCount = 1,
+        .entries = &colorBindGroupLayoutEntry,
+    };
+    colorBindGroupLayout = device.CreateBindGroupLayout(&colorBindGroupLayoutDesc);
+
+    // create instances from solved molecule
+    std::string jsonFilePath = "/home/seb/projects/lewis-structure-visualizer/solver/out/N2_0.json";
+    std::string csvFilePath = "/home/seb/projects/lewis-structure-visualizer/data/data.csv";
+    molecule::Molecule molecule(jsonFilePath, csvFilePath);
+    auto bondedAtoms = molecule.ComputeAtomLocsRots().value();
+
+    CreateInstances(bondedAtoms);
 
     CreateRenderPipeline();
 
@@ -581,8 +739,13 @@ void display::Application::RenderPresent() {
     glm::mat4 viewProjMat = camera.BuildViewProjectionMatrix();
     queue.WriteBuffer(camera.cameraBuffer, 0, &viewProjMat, sizeof(viewProjMat));
 
-    // update and write instance data to buffer
-    queue.WriteBuffer(instances[0].instanceBuffer, 0, instances[0].GetRawData().data(), instances[0].GetRawData().size_bytes());
+    // update and write instance data to buffer for each instances
+    for (auto& [_, instance] : instances) {
+        // vertex
+        queue.WriteBuffer(instance.instanceBuffer, 0, instance.GetRawData().data(), instance.GetRawData().size_bytes());
+        // color
+        queue.WriteBuffer(instance.colorBuffer, 0, &instance.color, sizeof(instance.color));
+    }
 
     // record the render pass
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDesc);
@@ -592,12 +755,18 @@ void display::Application::RenderPresent() {
     renderPass.SetBindGroup(0, cameraBindGroup);
 
     // draw meshes
-    auto mesh_1s = meshes.at("sp.gltf");
-    renderPass.SetVertexBuffer(0, mesh_1s.vertexBuffer);
-    renderPass.SetIndexBuffer(mesh_1s.indexBuffer, mesh_1s.indexFormat);
+    for (auto& [orbitalType, instance] : instances) {
+        // vertex
+        renderPass.SetVertexBuffer(0, meshes.at(orbitalType).vertexBuffer);
+        // index
+        renderPass.SetIndexBuffer(meshes.at(orbitalType).indexBuffer, meshes.at(orbitalType).indexFormat);
+        // instance
+        renderPass.SetVertexBuffer(1, instance.instanceBuffer);
+        // color
+        renderPass.SetBindGroup(1, instance.colorBindGroup);
 
-    renderPass.SetVertexBuffer(1, instances[0].instanceBuffer);
-    renderPass.DrawIndexed(mesh_1s.indexCount, instances[0].instanceData.size());
+        renderPass.DrawIndexed(meshes.at(orbitalType).indexCount, instance.instanceData.size());
+    }
 
     renderPass.End();
 

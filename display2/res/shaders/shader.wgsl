@@ -11,14 +11,19 @@ struct InstanceInput {
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) color: vec3f,
+    @location(0) color: vec4f,
 }
 
 struct CameraUniform {
     view_proj: mat4x4<f32>,
 }
 
+struct InstanceUniform {
+    color: vec4<f32>,
+}
+
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(1) @binding(0) var<uniform> instanceUni: InstanceUniform;
 
 @vertex
 fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -30,11 +35,11 @@ fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
     );
     var out: VertexOutput;
     out.position = camera.view_proj * model_matrix * vec4f(v.position, 1.0);
-    out.color = vec3f(1.0, 1.0, 1.0);
+    out.color = instanceUni.color;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return vec4f(in.color, 1.0);
+    return in.color;
 }
