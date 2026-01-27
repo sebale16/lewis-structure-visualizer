@@ -38,13 +38,13 @@ fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = camera.view_proj * model_matrix * vec4f(v.position, 1.0);
     out.color = instanceU.color;
-    out.normal = normalize((model_matrix * vec4f(v.normal, 0.0)).xyz);
+    out.normal = normalize((camera.view_proj * model_matrix * vec4f(v.normal, 0.0)).xyz);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let L = normalize(vec3f(0.0, 1.0, 0.0)); // top-down light
+    let L = normalize(vec3f(0.0, 1.0, -1.0)); // top-down light
 
     let dotNL = dot(in.normal, L);
     
