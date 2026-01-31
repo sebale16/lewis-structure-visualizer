@@ -113,24 +113,37 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
     }
     std::println();
     // create an instance data vector for each type of orbital: s, sp, p
+    // sphere representing atoms will be rendered as an s orbital instance with different color
     std::vector<InstanceData> sInstances;
     std::vector<InstanceData> spInstances;
     std::vector<InstanceData> pInstances;
     // build translation + rotation matrix for each atom that will be applied to its set of orbitals
     // translation + rotation are from locs + rots
     for (const auto& atom : bondedAtoms) {
-        // model consists of each atom with its orbitals
+        // model consists of each atom with its orbitals and sphere
         auto bondQuatPairs = atom.ToMatrix();
+
+        // construct model matrix
+        glm::mat4 atomModelMatrix = glm::mat4(1.0f);
+
+        // translate: move the whole thing to the atom's world position
+        atomModelMatrix = glm::translate(atomModelMatrix, atom.loc);
+
+        // rotate: apply the atom's overall rotation, then the specific orbital's rotation
+        atomModelMatrix = atomModelMatrix * glm::toMat4(atom.rot);
+
+        // since spheres are s orbitals prepend to sIntances vector
+        sInstances.insert(
+                sInstances.begin(),
+                InstanceData{
+                    .modelMatrix = glm::scale(atomModelMatrix, glm::vec3(S_ORBITAL_SCALE / 1.5)),
+                    .color = glm::vec4(.5, .5, .5, 1)
+                }
+        );
+
         // apply transforms to each of the atom's orbitals
-        for (auto& bQPair : bondQuatPairs) {
-            glm::mat4 model = glm::mat4(1.0f);
-
-            // translate: move the whole thing to the atom's world position
-            model = glm::translate(model, atom.loc);
-
-            // rotate: apply the atom's overall rotation, then the specific orbital's rotation
-            model = model * glm::toMat4(atom.rot);
-            model = model * glm::toMat4(bQPair.second);
+        for (auto& bQPair : bondQuatPairs.orbitals) {
+            auto orbitalModelMatrix = atomModelMatrix * glm::toMat4(bQPair.second);
 
             // scale: scale the mesh at its local origin
             float scaleFactor = 1.0f;
@@ -138,125 +151,67 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
             else if (bQPair.first == molecule::OrbitalType::sp) scaleFactor = SP_ORBITAL_SCALE;
             else if (bQPair.first == molecule::OrbitalType::p) scaleFactor = P_ORBITAL_SCALE;
 
-            model = glm::scale(model, glm::vec3(scaleFactor));
+            orbitalModelMatrix = glm::scale(orbitalModelMatrix, glm::vec3(scaleFactor));
 
             // depending on the orbital type, add to corresponding vector
             switch (bQPair.first) {
                 case molecule::OrbitalType::s:
-                    sInstances.push_back(InstanceData { .modelMatrix = model });
+                    sInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.3f, 0.f, 0.3f, 1.f)});
                     break;
                 case molecule::OrbitalType::sp:
-                    spInstances.push_back(InstanceData { .modelMatrix = model });
+                    spInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.f, 0.3f, 0.45f, 1.f) });
                     break;
                 case molecule::OrbitalType::p:
-                    pInstances.push_back(InstanceData { .modelMatrix = model });
+                    pInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.45f, 0.f, 0.2f, 1.f) });
                     break;
             }
         }
     }
 
-    // only create buffers and bind groups for which exist orbital instances
+    // only create buffers for which exist orbital instances
     if (sInstances.size() > 0) {
-        wgpu::BufferDescriptor sOrbitalVertexBufferDesc = {
+        wgpu::BufferDescriptor sOrbitalVertexBufferDesc {
             .label = "s Orbital Vertex Buffer",
             .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
             .size = sizeof(InstanceData) * sInstances.size(),
         };
-        wgpu::BufferDescriptor sOrbitalColorBufferDesc = {
-            .label = "s Orbital Color Buffer",
-            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
-            .size = sizeof(glm::vec4),
-        };
         instances["s"] = Instances{
                 .instanceBuffer = this->device.CreateBuffer(&sOrbitalVertexBufferDesc),
                 .instanceData = sInstances,
-                .colorBuffer = this->device.CreateBuffer(&sOrbitalColorBufferDesc),
-                .color = glm::vec4(0.3f, 0.f, 0.3f, 1.f),
         };
-
-        wgpu::BindGroupEntry colorBindGroupEntry{
-            .binding = 0,
-            .buffer = instances["s"].colorBuffer,
-            .offset = 0,
-            .size = sizeof(glm::vec4),
-        };
-
-        wgpu::BindGroupDescriptor colorBindGroupDesc{
-            .label = "s Orbital Color Bind Group",
-            .layout = colorBindGroupLayout,
-            .entryCount = 1,
-            .entries = &colorBindGroupEntry,
-        };
-        instances["s"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
     }
     if (spInstances.size() > 0) {
-        wgpu::BufferDescriptor spOrbitalVertexBufferDesc = {
+        wgpu::BufferDescriptor spOrbitalVertexBufferDesc {
             .label = "sp Orbital Instance Vertex Buffer",
             .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
             .size = sizeof(InstanceData) * spInstances.size(),
         };
-        wgpu::BufferDescriptor spOrbitalColorBufferDesc = {
-            .label = "sp Orbital Color Buffer",
-            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
-            .size = sizeof(glm::vec4),
-        };
         instances["sp"] = Instances {
                 .instanceBuffer = this->device.CreateBuffer(&spOrbitalVertexBufferDesc),
                 .instanceData = spInstances,
-                .colorBuffer = this->device.CreateBuffer(&spOrbitalColorBufferDesc),
-                .color = glm::vec4(0.f, 0.3f, 0.45f, 1.f),
         };
-        wgpu::BindGroupEntry colorBindGroupEntry{
-            .binding = 0,
-            .buffer = instances["sp"].colorBuffer,
-            .offset = 0,
-            .size = sizeof(glm::vec4),
-        };
-
-        wgpu::BindGroupDescriptor colorBindGroupDesc{
-            .label = "sp Orbital Color Bind Group",
-            .layout = colorBindGroupLayout,
-            .entryCount = 1,
-            .entries = &colorBindGroupEntry,
-        };
-        instances["sp"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
     }
     if (pInstances.size() > 0) {
-        wgpu::BufferDescriptor pOrbitalVertexBufferDesc = {
+        wgpu::BufferDescriptor pOrbitalVertexBufferDesc {
             .label = "p Orbital Vertex Buffer",
             .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
             .size = sizeof(InstanceData) * pInstances.size(),
         };
-        wgpu::BufferDescriptor pOrbitalColorBufferDesc = {
-            .label = "p Orbital Color Buffer",
-            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
-            .size = sizeof(glm::vec4),
-        };
         instances["p"] = Instances{
                 .instanceBuffer = this->device.CreateBuffer(&pOrbitalVertexBufferDesc),
                 .instanceData = pInstances,
-                .colorBuffer = this->device.CreateBuffer(&pOrbitalColorBufferDesc),
-                .color = glm::vec4(0.45f, 0.f, 0.2f, 1.f),
         };
-        wgpu::BindGroupEntry colorBindGroupEntry{
-            .binding = 0,
-            .buffer = instances["p"].colorBuffer,
-            .offset = 0,
-            .size = sizeof(glm::vec4),
-        };
-
-        wgpu::BindGroupDescriptor colorBindGroupDesc{
-            .label = "p Orbital Color Bind Group",
-            .layout = colorBindGroupLayout,
-            .entryCount = 1,
-            .entries = &colorBindGroupEntry,
-        };
-        instances["p"].colorBindGroup = device.CreateBindGroup(&colorBindGroupDesc);
     }
 
     std::println("s instance count: {}", sInstances.size());
     std::println("sp instance count: {}", spInstances.size());
     std::println("p instance count: {}", pInstances.size());
+
+    // write instance data to buffer for each instance
+    for (auto& [_, instance] : instances) {
+        // vertex + color
+        queue.WriteBuffer(instance.instanceBuffer, 0, instance.GetRawData().data(), instance.GetRawData().size_bytes());
+    }
 }
 
 std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF(const std::string& filePath) {
@@ -445,15 +400,15 @@ void display::Application::CreateRenderPipeline() {
     };
 
     // define instance attributes
-    std::vector<wgpu::VertexAttribute> instanceAttributes(4);
-    for (size_t i{0}; i < 4; i++) {
+    std::vector<wgpu::VertexAttribute> instanceAttributes(5);
+    for (size_t i{0}; i < 5; i++) {
         instanceAttributes[i].format = wgpu::VertexFormat::Float32x4;
         instanceAttributes[i].offset = i * sizeof(glm::vec4);
         instanceAttributes[i].shaderLocation = i + 5;
     }
     wgpu::VertexBufferLayout instanceBufferLayout{
         .stepMode = wgpu::VertexStepMode::Instance,
-        .arrayStride = sizeof(glm::mat4),
+        .arrayStride = sizeof(glm::vec4) * 5, // model matrix + color for each instance
         .attributeCount = instanceAttributes.size(),
         .attributes = instanceAttributes.data(),
     };
@@ -520,11 +475,10 @@ void display::Application::CreateRenderPipeline() {
     /// describe pipeline layout
     std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
         cameraBindGroupLayout,
-        colorBindGroupLayout,
     };
     wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
         .label = "Pipeline Layout Descriptor",
-        .bindGroupLayoutCount = 2,
+        .bindGroupLayoutCount = 1,
         .bindGroupLayouts = bindGroupLayouts.data(),
     };
     renderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
@@ -571,7 +525,7 @@ wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
 
 bool display::Application::Initialize(uint32_t width, uint32_t height, std::string moleculePath) {
     static const auto kTimedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
-    wgpu::InstanceDescriptor instance_desc = {
+    wgpu::InstanceDescriptor instance_desc {
         .nextInChain = nullptr,
         .requiredFeatureCount = 1,
         .requiredFeatures = &kTimedWaitAny,
@@ -686,23 +640,6 @@ bool display::Application::Initialize(uint32_t width, uint32_t height, std::stri
 
     CreateCamera();
 
-    /// create bind group for color so that it can be read as uniform in shader; one per app
-    wgpu::BindGroupLayoutEntry colorBindGroupLayoutEntry{
-        .binding = 0,
-        .visibility = wgpu::ShaderStage::Vertex,
-        .buffer = {
-            .type = wgpu::BufferBindingType::Uniform,
-            .hasDynamicOffset = false,
-            .minBindingSize = sizeof(glm::vec4),
-        }
-    };
-    wgpu::BindGroupLayoutDescriptor colorBindGroupLayoutDesc{
-        .label = "Color Bind Group Layout",
-        .entryCount = 1,
-        .entries = &colorBindGroupLayoutEntry,
-    };
-    colorBindGroupLayout = device.CreateBindGroupLayout(&colorBindGroupLayoutDesc);
-
     // create instances from solved molecule
     std::string jsonFilePath = "/home/seb/projects/lewis-structure-visualizer/solver/out/" + moleculePath;
     std::string csvFilePath = "/home/seb/projects/lewis-structure-visualizer/data/data.csv";
@@ -774,14 +711,6 @@ void display::Application::RenderPresent() {
     glm::mat4 viewProjMat = camera.BuildViewProjectionMatrix();
     queue.WriteBuffer(camera.cameraBuffer, 0, &viewProjMat, sizeof(viewProjMat));
 
-    // update and write instance data to buffer for each instances
-    for (auto& [_, instance] : instances) {
-        // vertex
-        queue.WriteBuffer(instance.instanceBuffer, 0, instance.GetRawData().data(), instance.GetRawData().size_bytes());
-        // color
-        queue.WriteBuffer(instance.colorBuffer, 0, &instance.color, sizeof(instance.color));
-    }
-
     // record the render pass
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDesc);
     renderPass.SetPipeline(renderPipeline);
@@ -797,15 +726,14 @@ void display::Application::RenderPresent() {
         renderPass.SetIndexBuffer(meshes.at(orbitalType).indexBuffer, meshes.at(orbitalType).indexFormat);
         // instance
         renderPass.SetVertexBuffer(1, instance.instanceBuffer);
-        // color
-        renderPass.SetBindGroup(1, instance.colorBindGroup);
+        // draw
         renderPass.DrawIndexed(meshes.at(orbitalType).indexCount, instance.instanceData.size());
     }
 
     renderPass.End();
 
     // finish recording
-    wgpu::CommandBufferDescriptor commandBufferDesc = {
+    wgpu::CommandBufferDescriptor commandBufferDesc {
         .nextInChain = nullptr,
         .label = "Command Buffer",
     };

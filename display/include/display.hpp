@@ -57,16 +57,14 @@ struct Camera {
 // holds actual data that varies per instance
 struct InstanceData {
     glm::mat4 modelMatrix;
+    glm::vec4 color;
 };
 
 // holds a single instance buffer
 struct Instances {
+    // vertex + color data
     wgpu::Buffer instanceBuffer;
     std::vector<InstanceData> instanceData;
-
-    wgpu::Buffer colorBuffer;
-    wgpu::BindGroup colorBindGroup;
-    glm::vec4 color;
 
     // returns view of raw instance data
     std::span<InstanceData> GetRawData();
@@ -91,8 +89,6 @@ private:
     wgpu::BindGroup cameraBindGroup;
     float deltaTime{0.f};
     float lastFrame{0.f};
-
-    wgpu::BindGroupLayout colorBindGroupLayout;
 
     std::unordered_map<std::string, Mesh> meshes;
 

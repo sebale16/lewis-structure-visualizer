@@ -12,7 +12,7 @@ using namespace molecule;
 #include <format>
 #include <print>
 
-std::vector<std::pair<OrbitalType, glm::quat>> BondedAtom::ToMatrix() const {
+AtomMatrix BondedAtom::ToMatrix() const {
     std::println("Name: {}, Hybridization: {}", this->wPtrAtom.lock()->name, (int) this->wPtrAtom.lock()->hybridization);
     std::vector<std::pair<OrbitalType, glm::quat>> orbitalRots;
     // orientation is dependent on hybridization of the atom
@@ -42,7 +42,7 @@ std::vector<std::pair<OrbitalType, glm::quat>> BondedAtom::ToMatrix() const {
         orbitalRots.emplace_back(std::make_pair(OrbitalType::p, glm::angleAxis(glm::pi<float>() / 2.f, glm::vec3(0, 1-i, i))));
     }
 
-    return orbitalRots;
+    return { .orbitals = orbitalRots };
 }
 
 Molecule::Molecule(const std::string& jsonPath, const std::string& dataCSVPath) {

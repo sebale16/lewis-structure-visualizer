@@ -8,6 +8,7 @@ struct InstanceInput {
     @location(6) model_matrix_1: vec4<f32>,
     @location(7) model_matrix_2: vec4<f32>,
     @location(8) model_matrix_3: vec4<f32>,
+    @location(9) color: vec4<f32>,
 }
 
 struct VertexOutput {
@@ -20,12 +21,7 @@ struct CameraUniform {
     view_proj: mat4x4<f32>,
 }
 
-struct InstanceUniform {
-    color: vec4<f32>,
-}
-
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-@group(1) @binding(0) var<uniform> instanceU: InstanceUniform;
 
 @vertex
 fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -37,14 +33,14 @@ fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
     );
     var out: VertexOutput;
     out.position = camera.view_proj * model_matrix * vec4f(v.position, 1.0);
-    out.color = instanceU.color;
+    out.color = instance.color;
     out.normal = normalize((camera.view_proj * model_matrix * vec4f(v.normal, 0.0)).xyz);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let L = normalize(vec3f(0.0, 1.0, -1.0)); // top-down light
+    let L = normalize(vec3f(0.0, 1.0, -1.0));
 
     let dotNL = dot(in.normal, L);
     

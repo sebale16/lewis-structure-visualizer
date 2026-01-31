@@ -108,6 +108,12 @@ struct Atom {
     size_t pOrbitalCount;
 };
 
+// represents atom as a matrix
+struct AtomMatrix {
+    // each element of the vector is a pair of an orbital type with its orientation
+    std::vector<std::pair<OrbitalType, glm::quat>> orbitals;
+};
+
 // represents bonded atom in a molecule
 // an Atom with position and rotation given by ComputeAtomLocsRots
 struct BondedAtom {
@@ -116,8 +122,7 @@ struct BondedAtom {
     glm::quat rot;
 
     // function to transform an atom into its matrix represention: 
-    // each element of the vector is a pair of an orbital type with its orientation
-    std::vector<std::pair<OrbitalType, glm::quat>> ToMatrix() const;
+    AtomMatrix ToMatrix() const;
 };
 
 class Molecule {
