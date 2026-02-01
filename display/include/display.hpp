@@ -52,6 +52,7 @@ struct Camera {
     void Update();
 
     glm::mat4 BuildViewProjectionMatrix() const;
+    glm::mat4 BuildProjMatrix() const;
 };
 
 // holds actual data that varies per instance
@@ -80,40 +81,68 @@ private:
     uint32_t gWidth;
     uint32_t gHeight;
     wgpu::Surface surface;
-    wgpu::TextureFormat textureFormat;
-    wgpu::Texture depthTexture;
-    wgpu::RenderPipeline renderPipeline;
 
+    wgpu::TextureFormat textureFormat;
+    wgpu::Texture colorTexture;
+    wgpu::TextureView colorTextureView;
+    wgpu::Texture depthTexture;
+    wgpu::TextureView depthTextureView;
+    wgpu::Texture normalTexture;
+    wgpu::TextureView normalTextureView;
+
+    wgpu::Sampler linearSampler;
+
+    wgpu::RenderPipeline geoRenderPipeline;
+    wgpu::RenderPipeline compositeRenderPipeline;
+
+    // camera
     Camera camera;
     wgpu::BindGroupLayout cameraBindGroupLayout;
     wgpu::BindGroup cameraBindGroup;
     float deltaTime{0.f};
     float lastFrame{0.f};
 
-    std::unordered_map<std::string, Mesh> meshes;
+    // ssao
+    wgpu::Buffer ssaoUniformBuffer;
+    wgpu::Texture noiseTexture;
+    wgpu::Texture ssaoTexture;
+    wgpu::TextureView ssaoTextureView;
+    wgpu::BindGroupLayout ssaoBindGroupLayout;
+    wgpu::BindGroup ssaoBindGroup;
+    wgpu::ComputePipeline ssaoPipeline;
 
+    // composite
+    wgpu::BindGroup compositeBindGroup;
+
+    std::unordered_map<std::string, Mesh> meshes;
     std::unordered_map<std::string, Instances> instances;
 
     /// processes wasd user input to update `camera`
     void ProcessInput();
 
-    /// helper to create a `Camera`, its buffer, and its bind group
+    /// create a `Camera`, its buffer, and its bind group
     void CreateCamera();
 
     /// creates a vector of `Instances` and their buffers based on `molecule`
     void CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms);
 
-    /// helper to configure surface
+    /// configure surface
     void ConfigureSurface();
 
-    /// helper to initialize models to be render
+    /// initialize models to be render
     void LoadMeshes(const std::vector<std::string>& filePaths);
 
     /// loads a shader into a shader module
     wgpu::ShaderModule LoadShaderModule(const std::string& filePath);
 
-    /// helper to initialize render pipeline
-    void CreateRenderPipeline();
+    /// initialize geometry render pipeline
+    void CreateGeometryRenderPipeline();
+
+    /// initialize composite render pipeline
+    void CreateCompositeRenderPipeline();
+
+    /// initialize SSAO pipeline
+    void CreateSSAOPipeline();
 
     /// returns the next wgpu::TextureView that can be drawn on
     wgpu::TextureView GetNextSurfaceTextureView();

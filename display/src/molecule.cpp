@@ -18,28 +18,28 @@ AtomMatrix BondedAtom::ToMatrix() const {
     // orientation is dependent on hybridization of the atom
     switch (this->wPtrAtom.lock()->hybridization) {
         case molecule::Hybridization::s:
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::s, glm::quat()));
+            orbitalRots.emplace_back(OrbitalType::s, glm::quat());
             break;
         case molecule::Hybridization::sp:
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1))));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::quat());
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1)));
             break;
         case molecule::Hybridization::sp2:
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(2.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(4.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1))));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::quat());
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(2.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1)));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(4.f * glm::pi<float>() / 3.f, glm::vec3(0, 0, 1)));
             break;
         case molecule::Hybridization::sp3:
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::quat()));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1))));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5))));
-            orbitalRots.emplace_back(std::make_pair(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5))));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::quat());
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, 0, -1)));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, -sqrt(3)/2., 0.5)));
+            orbitalRots.emplace_back(OrbitalType::sp, glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5)));
             break;
     }
 
     // handle p orbitals: perpendicular to sp orbital
     for (int i = 0; i < this->wPtrAtom.lock()->pOrbitalCount; i++) {
-        orbitalRots.emplace_back(std::make_pair(OrbitalType::p, glm::angleAxis(glm::pi<float>() / 2.f, glm::vec3(0, 1-i, i))));
+        orbitalRots.emplace_back(OrbitalType::p, glm::angleAxis(glm::pi<float>() / 2.f, glm::vec3(0, 1-i, i)));
     }
 
     return { .orbitals = orbitalRots };
@@ -119,7 +119,7 @@ void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::stri
                 std::format("Atom with name {} and id {} had invalid hybridization entry of {}.",
                     atom.name, atom.id, std::string(aEntry["hybridization"])));
 
-        atoms.emplace_back(std::make_shared<Atom>(atom));
+        atoms.push_back(std::make_shared<Atom>(atom));
     }
 
     // now that atoms are there, construct bonds between atoms
@@ -146,7 +146,7 @@ void Molecule::FillMoleculeFromJSON(const std::string& jsonPath, const std::stri
                         std::format("Atom with name {} and id {} had invalid bond_type entry of {}.",
                             atoms[i]->name, atoms[i]->id, std::string(bEntry["bond_type"])));
                 // create bond with that atom
-                bonds.emplace_back(std::make_pair(std::weak_ptr<Atom>(bondedWithAtom), bondType));
+                bonds.emplace_back(std::weak_ptr<Atom>(bondedWithAtom), bondType);
             } else {
                 throw std::runtime_error(
                         std::format("Atom with name {} and id {} could not find atom to bond with.",
@@ -293,23 +293,19 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
                 switch (geometry) {
                     case Geometry::Linear:
                         bondedAtoms.emplace_back(
-                            BondedAtom{
-                                .wPtrAtom = atom,
-                                .loc = glm::vec3(-pow(-1, index) * shift, 0.f, 0.f),
-                                .rot = glm::angleAxis((index + 1) * glm::pi<float>(), glm::vec3(0.f, 0.f, 1.f))
-                                     * glm::angleAxis((index - 1) * glm::pi<float>() / 2.f, glm::vec3(1.f, 0.f, 0.f)), // additional rotation so that p orbitals line up
-                            }
+                            atom,
+                            glm::vec3(-pow(-1, index) * shift, 0.f, 0.f),
+                            glm::angleAxis((index + 1) * glm::pi<float>(), glm::vec3(0.f, 0.f, 1.f))
+                                 * glm::angleAxis((index - 1) * glm::pi<float>() / 2.f, glm::vec3(1.f, 0.f, 0.f)) // additional rotation so that p orbitals line up
                         );
                         break;
                     case Geometry::TrigonalPlanar:
                     case Geometry::Bent1Lone: {
                         glm::quat rot = glm::angleAxis(2.f * index * glm::pi<float>() / 3.f, glm::vec3(0.f, 0.f, 1.f));
                         bondedAtoms.emplace_back(
-                            BondedAtom{
-                                .wPtrAtom = atom,
-                                .loc = rot * glm::vec3(-shift, 0.f, 0.f),
-                                .rot = rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1)),
-                            }
+                            atom,
+                            rot * glm::vec3(-shift, 0.f, 0.f),
+                            rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1))
                         );
                         break;
                     }
@@ -325,11 +321,9 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
                             rot = glm::angleAxis(static_cast<float>(glm::acos(-1./3.)), glm::vec3(0, sqrt(3)/2., 0.5));
                         }
                         bondedAtoms.emplace_back(
-                            BondedAtom{
-                                .wPtrAtom = atom,
-                                .loc = rot * glm::vec3(-shift, 0.f, 0.f),
-                                .rot = rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1)),
-                            }
+                            atom,
+                            rot * glm::vec3(-shift, 0.f, 0.f),
+                            rot * glm::angleAxis(glm::pi<float>(), glm::vec3(0, 0, 1))
                         );
                         break;
                     }

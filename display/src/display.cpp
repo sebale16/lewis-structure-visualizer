@@ -13,6 +13,7 @@
 #include <print>
 #include <iostream>
 #include <filesystem>
+#include <random>
 
 void display::Camera::Update() {
     // theta between 0 to pi
@@ -27,6 +28,10 @@ glm::mat4 display::Camera::BuildViewProjectionMatrix() const {
     glm::mat4 view = glm::lookAt(eye, target, up);
     glm::mat4 proj = glm::perspective(fovy, aspect, znear, zfar);
     return proj * view;
+}
+
+glm::mat4 display::Camera::BuildProjMatrix() const {
+    return glm::perspective(fovy, aspect, znear, zfar);
 }
 
 std::span<display::InstanceData> display::Instances::GetRawData() {
@@ -78,7 +83,6 @@ void display::Application::CreateCamera() {
         .visibility = wgpu::ShaderStage::Vertex,
         .buffer = {
             .type = wgpu::BufferBindingType::Uniform,
-            .hasDynamicOffset = false,
             .minBindingSize = sizeof(glm::mat4),
         }
     };
@@ -249,7 +253,6 @@ std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF
     const auto& normView = model.bufferViews.at(normAccessor.bufferView);
     const auto& normBuffer = model.buffers.at(normView.buffer);
     
-    
     // calculate size to create buffer
     size_t posDataSize = posAccessor.count * sizeof(float) * 3;
     // pointer to actual data
@@ -268,14 +271,12 @@ std::expected<display::Mesh, std::string> display::Application::LoadMeshFromGLTF
         return std::unexpected(std::format("{} has invalid normal data", filePath));
     }
 
-    // stores each pos's position and normal
+    // stores each vertex's position and normal
     std::vector<Vertex> vertices;
     for (size_t i = 0; i < posAccessor.count; i++) {
         vertices.emplace_back(
-            Vertex{
-                .pos = glm::make_vec3(&posDataPtr[i * 3]),
-                .norm = glm::make_vec3(&normDataPtr[i * 3]),
-            }
+            glm::make_vec3(&posDataPtr[i * 3]),
+            glm::make_vec3(&normDataPtr[i * 3])
         );
     }
 
@@ -373,8 +374,8 @@ void display::Application::ConfigureSurface() {
     surface.Configure(&config);
 }
 
-void display::Application::CreateRenderPipeline() {
-    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
+void display::Application::CreateGeometryRenderPipeline() {
+    wgpu::RenderPipelineDescriptor geoRenderPipelineDescriptor { .label = "Geometry Render Pipeline" };
     auto shaderModule = LoadShaderModule("res/shaders/shader.wgsl");
 
     /// describe vertex buffer layouts
@@ -421,7 +422,7 @@ void display::Application::CreateRenderPipeline() {
         .bufferCount = 2,
         .buffers = vertexBufferLayouts.data(),
     };
-    renderPipelineDescriptor.vertex = vertexState;
+    geoRenderPipelineDescriptor.vertex = vertexState;
 
     /// describe primitive pipeline state
     wgpu::PrimitiveState primitiveState{
@@ -429,7 +430,7 @@ void display::Application::CreateRenderPipeline() {
         .frontFace = wgpu::FrontFace::CCW,
         .cullMode = wgpu::CullMode::None,
     };
-    renderPipelineDescriptor.primitive = primitiveState;
+    geoRenderPipelineDescriptor.primitive = primitiveState;
 
     /// describe fragment pipeline state
     wgpu::BlendState blendState{
@@ -449,56 +450,474 @@ void display::Application::CreateRenderPipeline() {
         .blend = &blendState,
         .writeMask = wgpu::ColorWriteMask::All,
     };
+    wgpu::ColorTargetState normalTargetState{
+        .format = textureFormat,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+    std::vector<wgpu::ColorTargetState> targets { colorTargetState, normalTargetState };
     wgpu::FragmentState fragmentState{
         .module = shaderModule,
         .entryPoint = "fs_main",
-        .targetCount = 1, // only one target because render pass has only one
-                          // output color attachment
-        .targets = &colorTargetState,
+        .targetCount = 2, // color + normal texture
+        .targets = targets.data(),
     };
-    renderPipelineDescriptor.fragment = &fragmentState;
+    geoRenderPipelineDescriptor.fragment = &fragmentState;
 
     /// describe stencil/depth fragment state
     wgpu::DepthStencilState depthStencilState{
-        .format = wgpu::TextureFormat::Depth24PlusStencil8,
+        .format = wgpu::TextureFormat::Depth32Float,
         .depthWriteEnabled = wgpu::OptionalBool::True,
         .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
         .stencilReadMask = 0,
         .stencilWriteMask = 0,
     };
-    renderPipelineDescriptor.depthStencil = &depthStencilState;
-
-    /// describe multi-sampling state
-    wgpu::MultisampleState multisampleState;
-    renderPipelineDescriptor.multisample = multisampleState;
+    geoRenderPipelineDescriptor.depthStencil = &depthStencilState;
 
     /// describe pipeline layout
     std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
         cameraBindGroupLayout,
     };
     wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
-        .label = "Pipeline Layout Descriptor",
+        .label = "Render Pipeline Layout",
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = bindGroupLayouts.data(),
     };
-    renderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
+    geoRenderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
 
     /// create render pipeline
-    renderPipeline = device.CreateRenderPipeline(&renderPipelineDescriptor);
+    geoRenderPipeline = device.CreateRenderPipeline(&geoRenderPipelineDescriptor);
+
+    /// create color texture
+    wgpu::TextureDescriptor colorTextureDesc{
+        .label = "Color Texture",
+        .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {WIDTH, HEIGHT, 1},
+        .format = textureFormat,
+    };
+    colorTexture = device.CreateTexture(&colorTextureDesc);
+
+    /// create view for color texture
+    wgpu::TextureViewDescriptor colorTextureViewDesc{
+        .label = "Color Texture View",
+        .format = colorTexture.GetFormat(),
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .mipLevelCount = 1,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::All,
+    };
+    colorTextureView = colorTexture.CreateView(&colorTextureViewDesc);
 
     /// create depth texture
     wgpu::TextureDescriptor depthTextureDesc{
-        .label = "Depth Texture Descriptor",
-        .usage = wgpu::TextureUsage::RenderAttachment,
+        .label = "Depth Texture",
+        .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
         .dimension = wgpu::TextureDimension::e2D,
         .size = {WIDTH, HEIGHT, 1},
-        .format = wgpu::TextureFormat::Depth24PlusStencil8,
-        .mipLevelCount = 1,
-        .sampleCount = 1,
-        .viewFormatCount = 1,
-        .viewFormats = &depthStencilState.format,
+        .format = wgpu::TextureFormat::Depth32Float,
     };
     depthTexture = device.CreateTexture(&depthTextureDesc);
+
+    /// create depth texture view
+    wgpu::TextureViewDescriptor depthTextureViewDesc{
+        .label = "Depth Texture View",
+        .format = wgpu::TextureFormat::Depth32Float,
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .mipLevelCount = 1,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::DepthOnly,
+        .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
+    };
+    depthTextureView = depthTexture.CreateView(&depthTextureViewDesc);
+
+    /// create normal texture
+    wgpu::TextureDescriptor normalTextureDesc{
+        .label = "Normal Texture Descriptor",
+        .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {WIDTH, HEIGHT, 1},
+        .format = textureFormat,
+    };
+    normalTexture = device.CreateTexture(&normalTextureDesc);
+
+    /// create view for normal texture
+    wgpu::TextureViewDescriptor normalTextureViewDesc{
+        .label = "Normal Texture View",
+        .format = normalTexture.GetFormat(),
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .mipLevelCount = 1,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::All,
+    };
+    normalTextureView = normalTexture.CreateView(&normalTextureViewDesc);
+}
+
+void display::Application::CreateSSAOPipeline() {
+    // SSAO inputs: 
+    // uniforms: proj, inv proj, points to sample on hemisphere, radius of hemisphere, bias
+    // populated depth, normals, noise texture, sampler, output texture
+
+    wgpu::ComputePipelineDescriptor ssaoPipelineDescriptor { .label = "SSAO Pipeline" };
+    auto shaderModule = LoadShaderModule("res/shaders/ssao.wgsl");
+
+    ssaoPipelineDescriptor.compute = {
+        .module = shaderModule,
+        .entryPoint = "compute_main",
+    };
+
+    /// assemble uniforms into one bind group
+    float radius{0.2f}, bias{0.2f};
+    // generate kernel of points to sample on hemisphere
+    std::uniform_real_distribution<float> randFloats(0.0, 1.0);
+    std::default_random_engine generator;
+    std::vector<glm::vec4> kernel;
+    for (int i{0}; i < 64; i++) {
+        // create points in hemisphere in +z dir
+        glm::vec3 sample(
+            randFloats(generator) * 2.0 - 1.0, // -1 to 1
+            randFloats(generator) * 2.0 - 1.0,
+            randFloats(generator) // 0 to 1
+        );
+        // each point is on surface of hemisphere
+        sample = glm::normalize(sample);
+        // spread points along length of radius
+        sample *= randFloats(generator);
+        kernel.emplace_back(sample, 0.f);
+    }
+    // total size is: 2 matrices (proj and inv proj), vector of vec4 (kernel), 2 floats (radius + bias), and 2 more floats for padding
+    uint64_t ssaoUniformBufferSize = 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4) + 4 * sizeof(float);
+
+    wgpu::BufferDescriptor ssaoBufferDesc{
+        .label = "SSAO Uniform Buffer",
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
+        .size = ssaoUniformBufferSize,
+    };
+    ssaoUniformBuffer = this->device.CreateBuffer(&ssaoBufferDesc);
+    // proj and inv proj are updated every frame so write kernel, radius, and bias for now
+    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4), kernel.data(), kernel.size() * sizeof(glm::vec4));
+    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4), &radius, sizeof(float));
+    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4) + sizeof(float), &bias, sizeof(float));
+    
+    std::vector<wgpu::BindGroupLayoutEntry> ssaoBindGroupLayoutEntries{
+        // ssao uniforms
+        wgpu::BindGroupLayoutEntry{
+            .binding = 0,
+            .visibility = wgpu::ShaderStage::Compute,
+            .buffer = {
+                .type = wgpu::BufferBindingType::Uniform,
+            }
+        },
+        // depth texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 1,
+            .visibility = wgpu::ShaderStage::Compute,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::Depth,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            }
+        },
+        // normal texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 2,
+            .visibility = wgpu::ShaderStage::Compute,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::Float,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+        },
+        // noise texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 3,
+            .visibility = wgpu::ShaderStage::Compute,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::UnfilterableFloat,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+        },
+        // sampler
+        wgpu::BindGroupLayoutEntry{
+            .binding = 4,
+            .visibility = wgpu::ShaderStage::Compute,
+            .sampler = { .type = wgpu::SamplerBindingType::Filtering },
+        },
+        // output texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 5,
+            .visibility = wgpu::ShaderStage::Compute,
+            .storageTexture = {
+                .access = wgpu::StorageTextureAccess::WriteOnly,
+                .format = wgpu::TextureFormat::R32Float,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            }
+        },
+    };
+    wgpu::BindGroupLayoutDescriptor ssaoBindGroupLayoutDesc{
+        .label = "SSAO Bind Group Layout",
+        .entryCount = 6,
+        .entries = ssaoBindGroupLayoutEntries.data(),
+    };
+    ssaoBindGroupLayout = device.CreateBindGroupLayout(&ssaoBindGroupLayoutDesc);
+
+    /// describe pipeline layout
+    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
+        ssaoBindGroupLayout,
+    };
+    wgpu::PipelineLayoutDescriptor ssaoPipelineLayoutDesc{
+        .label = "SSAO Pipeline Layout",
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = bindGroupLayouts.data(),
+    };
+    ssaoPipelineDescriptor.layout = device.CreatePipelineLayout(&ssaoPipelineLayoutDesc);
+
+    ssaoPipeline = device.CreateComputePipeline(&ssaoPipelineDescriptor);
+
+    // depth and normal textures are already created in render pipeline
+    // create noise texture (16x16 random values since bytes per row in texture data must be multiple of 256)
+    std::vector<glm::vec4> noise;
+    for (int i = 0; i < 256; i++) {
+        noise.emplace_back(randFloats(generator) * 2.f - 1.f, randFloats(generator) * 2.f - 1.f, 0.f, 0.f);
+    }
+    wgpu::TextureDescriptor noiseTextureDesc{
+        .label = "Noise Texture",
+        .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {16, 16, 1},
+        .format = wgpu::TextureFormat::RGBA32Float,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    noiseTexture = device.CreateTexture(&noiseTextureDesc);
+    // write noise data to the texture
+    wgpu::TexelCopyTextureInfo texelCopyTextureInfo{
+        .texture = noiseTexture,
+        .origin = {0, 0, 0},
+        .aspect = wgpu::TextureAspect::All,
+    };
+    wgpu::TexelCopyBufferLayout texelCopyBufferLayout{
+        .bytesPerRow = 16 * sizeof(glm::vec4),
+        .rowsPerImage = 16,
+    };
+    wgpu::Extent3D extent3d{16, 16, 1};
+    queue.WriteTexture(
+        &texelCopyTextureInfo,
+        noise.data(),
+        noise.size() * sizeof(glm::vec4),
+        &texelCopyBufferLayout,
+        &extent3d
+    );
+
+    // create texture view for noise
+    wgpu::TextureViewDescriptor noiseTextureViewDesc{
+        .label = "Noise Texture View",
+        .format = noiseTexture.GetFormat(),
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::All,
+    };
+    wgpu::TextureView noiseTextureView = noiseTexture.CreateView(&noiseTextureViewDesc);
+
+    // sampler for noise and normal textures
+    wgpu::SamplerDescriptor samplerDesc{
+        .label = "Sampler",
+        .addressModeU = wgpu::AddressMode::Repeat,
+        .addressModeV = wgpu::AddressMode::Repeat,
+        .magFilter = wgpu::FilterMode::Linear,
+        .minFilter = wgpu::FilterMode::Linear,
+    };
+    linearSampler = device.CreateSampler(&samplerDesc);
+
+    // create ambient occlusion output texture
+    wgpu::TextureDescriptor ssaoTextureDesc{
+        .label = "SSAO Texture",
+        .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {WIDTH, HEIGHT, 1},
+        .format = wgpu::TextureFormat::R32Float,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    ssaoTexture = device.CreateTexture(&ssaoTextureDesc);
+
+    // texture view for ssao output
+    wgpu::TextureViewDescriptor ssaoTextureViewDesc{
+        .label = "SSAO Texture View",
+        .format = ssaoTexture.GetFormat(),
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::All,
+    };
+    ssaoTextureView = ssaoTexture.CreateView(&ssaoTextureViewDesc);
+
+    // describe ssao bind group entries
+    std::vector<wgpu::BindGroupEntry> ssaoBindGroupEntries {
+        // uniforms
+        wgpu::BindGroupEntry{
+            .binding = 0,
+            .buffer = ssaoUniformBuffer,
+            .size = ssaoUniformBufferSize,
+        },
+        // depth texture
+        wgpu::BindGroupEntry{
+            .binding = 1,
+            .textureView = depthTextureView,
+        },
+        // normal texture
+        wgpu::BindGroupEntry{
+            .binding = 2,
+            .textureView = normalTextureView,
+        },
+        // noise texture
+        wgpu::BindGroupEntry{
+            .binding = 3,
+            .textureView = noiseTextureView,
+        },
+        // sampler
+        wgpu::BindGroupEntry{
+            .binding = 4,
+            .sampler = linearSampler,
+        },
+        // ssao texture
+        wgpu::BindGroupEntry{
+            .binding = 5,
+            .textureView = ssaoTextureView,
+        }
+    };
+
+    wgpu::BindGroupDescriptor ssaoBindGroupDesc{
+        .label = "SSAO Bind Group",
+        .layout = ssaoBindGroupLayout,
+        .entryCount = ssaoBindGroupLayoutEntries.size(),
+        .entries = ssaoBindGroupEntries.data(),
+    };
+    ssaoBindGroup = device.CreateBindGroup(&ssaoBindGroupDesc);
+}
+
+void display::Application::CreateCompositeRenderPipeline() {
+    wgpu::RenderPipelineDescriptor compositeRenderPipelineDescriptor { .label = "Composite Render Pipeline" };
+    auto shaderModule = LoadShaderModule("res/shaders/composite.wgsl");
+
+    // vertex state
+    wgpu::VertexState vertexState{
+        .module = shaderModule,
+        .entryPoint = "vs_main",
+    };
+    compositeRenderPipelineDescriptor.vertex = vertexState;
+
+    /// describe primitive pipeline state
+    wgpu::PrimitiveState primitiveState{
+        .topology = wgpu::PrimitiveTopology::TriangleList,
+        .frontFace = wgpu::FrontFace::CCW,
+        .cullMode = wgpu::CullMode::None,
+    };
+    compositeRenderPipelineDescriptor.primitive = primitiveState;
+
+    // fragment state
+    wgpu::BlendState blendState{
+        .color =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::One,
+                .dstFactor = wgpu::BlendFactor::Zero,
+            },
+        .alpha = wgpu::BlendComponent{
+            .operation = wgpu::BlendOperation::Add,
+            .srcFactor = wgpu::BlendFactor::One,
+            .dstFactor = wgpu::BlendFactor::Zero,
+        }};
+    wgpu::ColorTargetState colorTargetState{
+        .format = textureFormat,
+        .blend = &blendState,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+    std::vector<wgpu::ColorTargetState> targets { colorTargetState };
+    wgpu::FragmentState fragmentState{
+        .module = shaderModule,
+        .entryPoint = "fs_main",
+        .targetCount = 1,
+        .targets = targets.data(),
+    };
+    compositeRenderPipelineDescriptor.fragment = &fragmentState;
+
+    // bind group layout
+    std::vector<wgpu::BindGroupLayoutEntry> compositeBindGroupLayoutEntries{
+        // color texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 0,
+            .visibility = wgpu::ShaderStage::Fragment,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::Float,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+        },
+        // ssao texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 1,
+            .visibility = wgpu::ShaderStage::Fragment,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::UnfilterableFloat,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+        },
+        // composite sampler
+        wgpu::BindGroupLayoutEntry{
+            .binding = 2,
+            .visibility = wgpu::ShaderStage::Fragment,
+            .sampler = { .type = wgpu::SamplerBindingType::Filtering },
+        },
+    };
+    wgpu::BindGroupLayoutDescriptor compositeBindGroupLayoutDesc{
+        .label = "Composite Bind Group Layout",
+        .entryCount = 3,
+        .entries = compositeBindGroupLayoutEntries.data(),
+    };
+
+    wgpu::BindGroupLayout compositeBindGroupLayout = device.CreateBindGroupLayout(&compositeBindGroupLayoutDesc);
+
+    /// describe pipeline layout
+    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
+        compositeBindGroupLayout,
+    };
+    wgpu::PipelineLayoutDescriptor compositePipelineLayoutDesc{
+        .label = "Composite Pipeline Layout",
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = bindGroupLayouts.data(),
+    };
+    compositeRenderPipelineDescriptor.layout = device.CreatePipelineLayout(&compositePipelineLayoutDesc);
+
+    compositeRenderPipeline = device.CreateRenderPipeline(&compositeRenderPipelineDescriptor);
+
+    // describe composite bind group entries
+    std::vector<wgpu::BindGroupEntry> compositeBindGroupEntries {
+        // color texture
+        wgpu::BindGroupEntry{
+            .binding = 0,
+            .textureView = colorTextureView,
+        },
+        // ssao texture
+        wgpu::BindGroupEntry{
+            .binding = 1,
+            .textureView = ssaoTextureView,
+        },
+        // sampler
+        wgpu::BindGroupEntry{
+            .binding = 2,
+            .sampler = linearSampler,
+        },
+    };
+
+    wgpu::BindGroupDescriptor compositeBindGroupDesc{
+        .label = "Composite Bind Group",
+        .layout = compositeBindGroupLayout,
+        .entryCount = 3,
+        .entries = compositeBindGroupEntries.data(),
+    };
+    compositeBindGroup = device.CreateBindGroup(&compositeBindGroupDesc);
 }
 
 wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
@@ -508,8 +927,7 @@ wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
 
     // create view for this texture
     wgpu::TextureViewDescriptor textureViewDesc{
-        .nextInChain = nullptr,
-        .label = "Texture View",
+        .label = "Color Texture View",
         .format = surfaceTexture.texture.GetFormat(),
         .dimension = wgpu::TextureViewDimension::e2D,
         .baseMipLevel = 0,
@@ -647,41 +1065,32 @@ bool display::Application::Initialize(uint32_t width, uint32_t height, std::stri
     auto bondedAtoms = molecule.ComputeAtomLocsRots().value();
 
     CreateInstances(bondedAtoms);
+    std::println("Loaded instances...");
 
-    CreateRenderPipeline();
+    CreateGeometryRenderPipeline();
+    std::println("Created geometry render pipeline...");
+
+    CreateSSAOPipeline();
+    std::println("Created SSAO pipeline...");
+
+    CreateCompositeRenderPipeline();
+    std::println("Created composite render pipeline...");
 
     return true;
 }
 
 void display::Application::RenderPresent() {
-    // which textures are the target of the render pass
-    wgpu::RenderPassColorAttachment attachment{
-        .view = GetNextSurfaceTextureView(),
+    wgpu::RenderPassColorAttachment colorAttachment{
+        .view = colorTextureView,
         .loadOp = wgpu::LoadOp::Clear,
         .storeOp = wgpu::StoreOp::Store,
-        .clearValue = wgpu::Color{0.0, 0.0, 0.0, 1.0},
     };
 
-    // command encoder for drawing
-    wgpu::CommandEncoderDescriptor commandEncoderDesc{
-        .nextInChain = nullptr,
-        .label = "Command Encoder",
+    wgpu::RenderPassColorAttachment normalAttachment{
+        .view = normalTextureView,
+        .loadOp = wgpu::LoadOp::Clear,
+        .storeOp = wgpu::StoreOp::Store,
     };
-    wgpu::CommandEncoder commandEncoder = device.CreateCommandEncoder(&commandEncoderDesc);
-
-    /// create depth texture view
-    wgpu::TextureViewDescriptor depthTextureViewDesc{
-        .label = "Depth Texture View",
-        .format = wgpu::TextureFormat::Depth24PlusStencil8,
-        .dimension = wgpu::TextureViewDimension::e2D,
-        .baseMipLevel = 0,
-        .mipLevelCount = 1,
-        .baseArrayLayer = 0,
-        .arrayLayerCount = 1,
-        .aspect = wgpu::TextureAspect::All,
-        .usage = wgpu::TextureUsage::RenderAttachment,
-    };
-    wgpu::TextureView depthTextureView = depthTexture.CreateView(&depthTextureViewDesc);
 
     wgpu::RenderPassDepthStencilAttachment depthStencilAttachment{
         .view = depthTextureView,
@@ -690,17 +1099,29 @@ void display::Application::RenderPresent() {
         // initial value of depth buffer, signifying the far value in this case
         .depthClearValue = 1.0f,
         .depthReadOnly = false,
-        .stencilLoadOp = wgpu::LoadOp::Clear,
-        .stencilStoreOp = wgpu::StoreOp::Store,
-        .stencilClearValue = 0,
-        .stencilReadOnly = false,
     };
 
-    // attach textures to the render pass
-    wgpu::RenderPassDescriptor renderPassDesc{
-        .colorAttachmentCount = 1,
-        .colorAttachments = &attachment,
+    // create surface attachment
+    wgpu::RenderPassColorAttachment surfaceAttachment{
+        .view = GetNextSurfaceTextureView(),
+        .loadOp = wgpu::LoadOp::Clear,
+        .storeOp = wgpu::StoreOp::Store,
+        .clearValue = wgpu::Color{0.0, 0.0, 0.0, 1.0},
+    };
+
+    // attach textures to the geometry render pass: color + normal
+    std::vector<wgpu::RenderPassColorAttachment> geoAttachments { colorAttachment, normalAttachment };
+    wgpu::RenderPassDescriptor geoRenderPassDesc{
+        .colorAttachmentCount = 2,
+        .colorAttachments = geoAttachments.data(),
         .depthStencilAttachment = &depthStencilAttachment,
+    };
+
+    // attach surface texture to the composite render pass
+    std::vector<wgpu::RenderPassColorAttachment> compositeAttachments { surfaceAttachment };
+    wgpu::RenderPassDescriptor compositeRenderPassDesc{
+        .colorAttachmentCount = 1,
+        .colorAttachments = compositeAttachments.data(),
     };
 
     // process user input
@@ -711,32 +1132,64 @@ void display::Application::RenderPresent() {
     glm::mat4 viewProjMat = camera.BuildViewProjectionMatrix();
     queue.WriteBuffer(camera.cameraBuffer, 0, &viewProjMat, sizeof(viewProjMat));
 
-    // record the render pass
-    wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDesc);
-    renderPass.SetPipeline(renderPipeline);
+    // write camera projection and inverse to ssao uniform
+    glm::mat4 projMat = camera.BuildProjMatrix();
+    glm::mat4 invProjMat = glm::inverse(projMat);
+    queue.WriteBuffer(ssaoUniformBuffer, 0, &projMat, sizeof(projMat));
+    queue.WriteBuffer(ssaoUniformBuffer, sizeof(projMat), &invProjMat, sizeof(invProjMat));
 
-    // bind camera bind group
-    renderPass.SetBindGroup(0, cameraBindGroup);
+    // command encoder for drawing + compute
+    wgpu::CommandEncoderDescriptor commandEncoderDesc{ .label = "Command Encoder" };
+    wgpu::CommandEncoder commandEncoder = device.CreateCommandEncoder(&commandEncoderDesc);
 
-    // draw meshes
-    for (auto& [orbitalType, instance] : instances) {
-        // vertex
-        renderPass.SetVertexBuffer(0, meshes.at(orbitalType).vertexBuffer);
-        // index
-        renderPass.SetIndexBuffer(meshes.at(orbitalType).indexBuffer, meshes.at(orbitalType).indexFormat);
-        // instance
-        renderPass.SetVertexBuffer(1, instance.instanceBuffer);
-        // draw
-        renderPass.DrawIndexed(meshes.at(orbitalType).indexCount, instance.instanceData.size());
+    {
+        // record the render pass
+        wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&geoRenderPassDesc);
+        renderPass.SetPipeline(geoRenderPipeline);
+
+        // bind camera bind group
+        renderPass.SetBindGroup(0, cameraBindGroup);
+
+        // draw meshes
+        for (auto& [orbitalType, instance] : instances) {
+            // vertex
+            renderPass.SetVertexBuffer(0, meshes.at(orbitalType).vertexBuffer);
+            // index
+            renderPass.SetIndexBuffer(meshes.at(orbitalType).indexBuffer, meshes.at(orbitalType).indexFormat);
+            // instance
+            renderPass.SetVertexBuffer(1, instance.instanceBuffer);
+            // draw
+            renderPass.DrawIndexed(meshes.at(orbitalType).indexCount, instance.instanceData.size());
+        }
+
+        renderPass.End();
+    }
+    {
+        // record ssao pass
+        wgpu::ComputePassEncoder ssaoPass = commandEncoder.BeginComputePass();
+        ssaoPass.SetPipeline(ssaoPipeline);
+
+        // bind uniforms bind group
+        ssaoPass.SetBindGroup(0, ssaoBindGroup);
+        
+        // shader uses 8x8 workgroups, so must calculate how many groups to fill entire screen
+        ssaoPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH + 7) / 8), static_cast<uint32_t>((HEIGHT + 7) / 8));
+
+        ssaoPass.End();
+    }
+    {
+        // record composite pass
+        wgpu::RenderPassEncoder compositePass = commandEncoder.BeginRenderPass(&compositeRenderPassDesc);
+        compositePass.SetPipeline(compositeRenderPipeline);
+
+        compositePass.SetBindGroup(0, compositeBindGroup);
+        // draw three vertices for the triangle
+        compositePass.Draw(3);
+        compositePass.End();
     }
 
-    renderPass.End();
-
     // finish recording
-    wgpu::CommandBufferDescriptor commandBufferDesc {
-        .nextInChain = nullptr,
-        .label = "Command Buffer",
-    };
+    wgpu::CommandBufferDescriptor commandBufferDesc { .label = "Command Buffer" };
     wgpu::CommandBuffer commands = commandEncoder.Finish(&commandBufferDesc);
 
     // submit to the queue

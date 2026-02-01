@@ -17,6 +17,11 @@ struct VertexOutput {
     @location(1) normal: vec3f,
 }
 
+struct FragmentOutput {
+    @location(0) color: vec4f,
+    @location(1) normal: vec4f,
+}
+
 struct CameraUniform {
     view_proj: mat4x4<f32>,
 }
@@ -39,18 +44,9 @@ fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let L = normalize(vec3f(0.0, 1.0, -1.0));
-
-    let dotNL = dot(in.normal, L);
-    
-    let wrap = 1.5; 
-    let wrappedDot = (dotNL + wrap) / (1.0 + wrap);
-    
-    let diffuse = wrappedDot * wrappedDot;
-
-    let ambient = 0.3;
-    let finalLighting = max(diffuse, ambient);
-
-    return vec4f(in.color.rgb * finalLighting, in.color.a);
+fn fs_main(in: VertexOutput) -> FragmentOutput {
+    var output: FragmentOutput;
+    output.color = in.color;
+    output.normal = vec4f(in.normal, 0.0);
+    return output;
 }
