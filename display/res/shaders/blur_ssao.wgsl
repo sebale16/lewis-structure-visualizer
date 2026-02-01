@@ -18,7 +18,7 @@ fn blur_ssao_main(@builtin(global_invocation_id) id: vec3<u32>) {
             let depthAtOffset = textureLoad(depthTexture, coords + offset, 0);
             let aoAtOffset = textureLoad(ssaoTextureIn, coords + offset, 0).r;
 
-            // only blue if depths are similar
+            // only blend if depths are similar
             let weight = 1.0 / (0.0001 + abs(centerDepth - depthAtOffset));
 
             result += aoAtOffset * weight;

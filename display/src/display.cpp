@@ -566,7 +566,7 @@ void display::Application::CreateSSAOPipeline() {
     };
 
     /// assemble uniforms into one bind group
-    float radius{0.125f}, bias{0.3f};
+    float radius{0.133f}, bias{0.185f};
     // generate kernel of points to sample on hemisphere
     std::uniform_real_distribution<float> randFloats(0.0, 1.0);
     std::default_random_engine generator;
@@ -736,7 +736,7 @@ void display::Application::CreateSSAOPipeline() {
         .label = "SSAO Texture",
         .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding,
         .dimension = wgpu::TextureDimension::e2D,
-        .size = {WIDTH, HEIGHT, 1},
+        .size = {WIDTH / 2, HEIGHT / 2, 1},
         .format = wgpu::TextureFormat::R32Float,
         .mipLevelCount = 1,
         .sampleCount = 1,
@@ -864,7 +864,7 @@ void display::Application::CreateSSAOPipeline() {
         .label = "SSAO Blur Texture",
         .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding,
         .dimension = wgpu::TextureDimension::e2D,
-        .size = {WIDTH, HEIGHT, 1},
+        .size = {WIDTH / 2, HEIGHT / 2, 1},
         .format = wgpu::TextureFormat::R32Float,
         .mipLevelCount = 1,
         .sampleCount = 1,
@@ -1287,7 +1287,7 @@ void display::Application::RenderPresent() {
         ssaoPass.SetBindGroup(0, ssaoBindGroup);
         
         // shader uses 8x8 workgroups, so must calculate how many groups to fill entire screen
-        ssaoPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH + 7) / 8), static_cast<uint32_t>((HEIGHT + 7) / 8));
+        ssaoPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH/2 + 7) / 8), static_cast<uint32_t>((HEIGHT/2 + 7) / 8));
 
         ssaoPass.End();
     }
@@ -1300,7 +1300,7 @@ void display::Application::RenderPresent() {
         ssaoBlurPass.SetBindGroup(0, ssaoBlurBindGroup);
         
         // shader uses 8x8 workgroups, so must calculate how many groups to fill entire screen
-        ssaoBlurPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH + 7) / 8), static_cast<uint32_t>((HEIGHT + 7) / 8));
+        ssaoBlurPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH/2+ 7) / 8), static_cast<uint32_t>((HEIGHT/2 + 7) / 8));
 
         ssaoBlurPass.End();
     }
