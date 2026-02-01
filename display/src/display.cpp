@@ -558,15 +558,15 @@ void display::Application::CreateSSAOPipeline() {
     // populated depth, normals, noise texture, sampler, output texture
 
     wgpu::ComputePipelineDescriptor ssaoPipelineDescriptor { .label = "SSAO Pipeline" };
-    auto shaderModule = LoadShaderModule("res/shaders/ssao.wgsl");
+    auto ssaoShaderModule = LoadShaderModule("res/shaders/ssao.wgsl");
 
     ssaoPipelineDescriptor.compute = {
-        .module = shaderModule,
+        .module = ssaoShaderModule,
         .entryPoint = "compute_main",
     };
 
     /// assemble uniforms into one bind group
-    float radius{0.2f}, bias{0.2f};
+    float radius{0.125f}, bias{0.3f};
     // generate kernel of points to sample on hemisphere
     std::uniform_real_distribution<float> randFloats(0.0, 1.0);
     std::default_random_engine generator;
@@ -580,8 +580,10 @@ void display::Application::CreateSSAOPipeline() {
         );
         // each point is on surface of hemisphere
         sample = glm::normalize(sample);
-        // spread points along length of radius
-        sample *= randFloats(generator);
+        // accelerating scale function
+        float scale = (float)i / 64.0f;
+        scale = glm::mix(0.1f, 1.0f, scale * scale);
+        sample *= scale;
         kernel.emplace_back(sample, 0.f);
     }
     // total size is: 2 matrices (proj and inv proj), vector of vec4 (kernel), 2 floats (radius + bias), and 2 more floats for padding
@@ -645,7 +647,7 @@ void display::Application::CreateSSAOPipeline() {
             .binding = 5,
             .visibility = wgpu::ShaderStage::Compute,
             .storageTexture = {
-                .access = wgpu::StorageTextureAccess::WriteOnly,
+                .access = wgpu::StorageTextureAccess::ReadWrite,
                 .format = wgpu::TextureFormat::R32Float,
                 .viewDimension = wgpu::TextureViewDimension::e2D,
             }
@@ -656,7 +658,7 @@ void display::Application::CreateSSAOPipeline() {
         .entryCount = 6,
         .entries = ssaoBindGroupLayoutEntries.data(),
     };
-    ssaoBindGroupLayout = device.CreateBindGroupLayout(&ssaoBindGroupLayoutDesc);
+    wgpu::BindGroupLayout ssaoBindGroupLayout = device.CreateBindGroupLayout(&ssaoBindGroupLayoutDesc);
 
     /// describe pipeline layout
     std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {
@@ -796,6 +798,118 @@ void display::Application::CreateSSAOPipeline() {
         .entries = ssaoBindGroupEntries.data(),
     };
     ssaoBindGroup = device.CreateBindGroup(&ssaoBindGroupDesc);
+
+
+    // ssao blur compute pipeline
+    wgpu::ComputePipelineDescriptor ssaoBlurPipelineDescriptor { .label = "SSAO Blur Pipeline" };
+    auto ssaoBlurShaderModule = LoadShaderModule("res/shaders/blur_ssao.wgsl");
+
+    ssaoBlurPipelineDescriptor.compute = {
+        .module = ssaoBlurShaderModule,
+        .entryPoint = "blur_ssao_main",
+    };
+
+    std::vector<wgpu::BindGroupLayoutEntry> ssaoBlurBindGroupLayoutEntries{
+        // ssao texture in
+        wgpu::BindGroupLayoutEntry{
+            .binding = 0,
+            .visibility = wgpu::ShaderStage::Compute,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::UnfilterableFloat,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            }
+        },
+        // depth texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 1,
+            .visibility = wgpu::ShaderStage::Compute,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::Depth,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+        },
+        // output ssao blur texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 2,
+            .visibility = wgpu::ShaderStage::Compute,
+            .storageTexture = {
+                .access = wgpu::StorageTextureAccess::WriteOnly,
+                .format = wgpu::TextureFormat::R32Float,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            }
+        },
+    };
+    wgpu::BindGroupLayoutDescriptor ssaoBlurBindGroupLayoutDesc{
+        .label = "SSAO Blur Bind Group Layout",
+        .entryCount = 3,
+        .entries = ssaoBlurBindGroupLayoutEntries.data(),
+    };
+    wgpu::BindGroupLayout ssaoBlurBindGroupLayout = device.CreateBindGroupLayout(&ssaoBlurBindGroupLayoutDesc);
+
+    /// describe pipeline layout
+    std::vector<wgpu::BindGroupLayout> ssaoBlurBindGroupLayouts = {
+        ssaoBlurBindGroupLayout,
+    };
+    wgpu::PipelineLayoutDescriptor ssaoBlurPipelineLayoutDesc{
+        .label = "SSAO Blur Pipeline Layout",
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = ssaoBlurBindGroupLayouts.data(),
+    };
+    ssaoBlurPipelineDescriptor.layout = device.CreatePipelineLayout(&ssaoBlurPipelineLayoutDesc);
+
+    ssaoBlurPipeline = device.CreateComputePipeline(&ssaoBlurPipelineDescriptor);
+
+    // create ambient occlusion output texture
+    wgpu::TextureDescriptor ssaoBlurTextureDesc{
+        .label = "SSAO Blur Texture",
+        .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding,
+        .dimension = wgpu::TextureDimension::e2D,
+        .size = {WIDTH, HEIGHT, 1},
+        .format = wgpu::TextureFormat::R32Float,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+    };
+    ssaoBlurTexture = device.CreateTexture(&ssaoBlurTextureDesc);
+
+    // texture view for ssao output
+    wgpu::TextureViewDescriptor ssaoBlurTextureViewDesc{
+        .label = "SSAO Blur Texture View",
+        .format = ssaoBlurTexture.GetFormat(),
+        .dimension = wgpu::TextureViewDimension::e2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = wgpu::TextureAspect::All,
+    };
+    ssaoBlurTextureView = ssaoBlurTexture.CreateView(&ssaoBlurTextureViewDesc);
+
+    // describe ssao blur bind group entries
+    std::vector<wgpu::BindGroupEntry> ssaoBlurBindGroupEntries {
+        // ssao texture in
+        wgpu::BindGroupEntry{
+            .binding = 0,
+            .textureView = ssaoTextureView,
+        },
+        // depth texture
+        wgpu::BindGroupEntry{
+            .binding = 1,
+            .textureView = depthTextureView,
+        },
+        // noise texture
+        wgpu::BindGroupEntry{
+            .binding = 2,
+            .textureView = ssaoBlurTextureView,
+        },
+    };
+
+    wgpu::BindGroupDescriptor ssaoBlurBindGroupDesc{
+        .label = "SSAO Blur Bind Group",
+        .layout = ssaoBlurBindGroupLayout,
+        .entryCount = ssaoBlurBindGroupLayoutEntries.size(),
+        .entries = ssaoBlurBindGroupEntries.data(),
+    };
+    ssaoBlurBindGroup = device.CreateBindGroup(&ssaoBlurBindGroupDesc);
 }
 
 void display::Application::CreateCompositeRenderPipeline() {
@@ -902,7 +1016,7 @@ void display::Application::CreateCompositeRenderPipeline() {
         // ssao texture
         wgpu::BindGroupEntry{
             .binding = 1,
-            .textureView = ssaoTextureView,
+            .textureView = ssaoBlurTextureView,
         },
         // sampler
         wgpu::BindGroupEntry{
@@ -1176,6 +1290,19 @@ void display::Application::RenderPresent() {
         ssaoPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH + 7) / 8), static_cast<uint32_t>((HEIGHT + 7) / 8));
 
         ssaoPass.End();
+    }
+    {
+        // record ssao blur pass
+        wgpu::ComputePassEncoder ssaoBlurPass = commandEncoder.BeginComputePass();
+        ssaoBlurPass.SetPipeline(ssaoBlurPipeline);
+
+        // bind uniforms bind group
+        ssaoBlurPass.SetBindGroup(0, ssaoBlurBindGroup);
+        
+        // shader uses 8x8 workgroups, so must calculate how many groups to fill entire screen
+        ssaoBlurPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH + 7) / 8), static_cast<uint32_t>((HEIGHT + 7) / 8));
+
+        ssaoBlurPass.End();
     }
     {
         // record composite pass

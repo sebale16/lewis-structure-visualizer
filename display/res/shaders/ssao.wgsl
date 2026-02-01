@@ -67,7 +67,7 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // normalize
-    let intensity = 10.0;
+    let intensity = 100.0;
     let finalSSAO = 1.0 - ((occlusion / 64.0) * intensity);
     textureStore(outTexture, vec2<i32>(id.xy), vec4<f32>(finalSSAO));
 }

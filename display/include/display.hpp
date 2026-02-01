@@ -89,11 +89,9 @@ private:
     wgpu::TextureView depthTextureView;
     wgpu::Texture normalTexture;
     wgpu::TextureView normalTextureView;
+    wgpu::RenderPipeline geoRenderPipeline;
 
     wgpu::Sampler linearSampler;
-
-    wgpu::RenderPipeline geoRenderPipeline;
-    wgpu::RenderPipeline compositeRenderPipeline;
 
     // camera
     Camera camera;
@@ -107,12 +105,18 @@ private:
     wgpu::Texture noiseTexture;
     wgpu::Texture ssaoTexture;
     wgpu::TextureView ssaoTextureView;
-    wgpu::BindGroupLayout ssaoBindGroupLayout;
     wgpu::BindGroup ssaoBindGroup;
     wgpu::ComputePipeline ssaoPipeline;
 
+    // ssao blur
+    wgpu::Texture ssaoBlurTexture;
+    wgpu::TextureView ssaoBlurTextureView;
+    wgpu::BindGroup ssaoBlurBindGroup;
+    wgpu::ComputePipeline ssaoBlurPipeline;
+
     // composite
     wgpu::BindGroup compositeBindGroup;
+    wgpu::RenderPipeline compositeRenderPipeline;
 
     std::unordered_map<std::string, Mesh> meshes;
     std::unordered_map<std::string, Instances> instances;
