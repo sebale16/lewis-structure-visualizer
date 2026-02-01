@@ -68,6 +68,13 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
         let offset = uniforms.proj * vec4<f32>(worldPos, 1.0);
         let offsetUV = (offset.xy / offset.w) * vec2<f32>(0.5, -0.5) + 0.5;
 
+        // skip if depth at current sampled position is background
+        let samplePixelCoords = vec2<i32>(offsetUV * dimsFull);
+        let sampleDepth = textureLoad(depthTexture, samplePixelCoords, 0);
+        if (sampleDepth >= 1.0) {
+            continue; 
+        }
+
         // actualPos.z has what is z value of object that is actually rendered
         let actualPos = getViewPos(offsetUV, dimsFull);
 
