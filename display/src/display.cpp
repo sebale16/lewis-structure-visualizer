@@ -572,7 +572,6 @@ void display::Application::CreateSSAOPipeline() {
     };
 
     /// assemble uniforms into one bind group
-    float radius{0.133f}, bias{0.185f};
     // generate kernel of points to sample on hemisphere
     std::uniform_real_distribution<float> randFloats(0.0, 1.0);
     std::default_random_engine generator;

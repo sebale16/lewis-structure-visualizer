@@ -75,7 +75,7 @@ struct SSAOUniforms {
     glm::mat4 proj;
     glm::mat4 invProj;
     glm::vec4 kernel[64];
-    float radius{0.2f}, bias{0.02f};
+    float radius{1.f}, bias{0.1f};
     float padding[2];
 };
 

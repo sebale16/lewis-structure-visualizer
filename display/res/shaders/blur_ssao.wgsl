@@ -11,20 +11,21 @@ fn blur_ssao_main(@builtin(global_invocation_id) id: vec3<u32>) {
     var result = 0.0;
     var totalWeight = 0.0;
 
-    // 4x4 kernel
-    for (var x = -2; x <= 2; x++) {
-        for (var y = -2; y <= 2; y++) {
+    // 8x8 kernel
+    for (var x = -4; x <= 4; x++) {
+        for (var y = -4; y <= 4; y++) {
             let offset = vec2<i32>(x, y);
             let depthAtOffset = textureLoad(depthTexture, coords + offset, 0);
             let aoAtOffset = textureLoad(ssaoTextureIn, coords + offset, 0).r;
 
             // only blend if depths are similar
             let weight = 1.0 / (0.0001 + abs(centerDepth - depthAtOffset));
-
+            // let weight = exp(-abs(centerDepth - depthAtOffset) * 500.0);
+            
             result += aoAtOffset * weight;
             totalWeight += weight;
         }
     }
-
-    textureStore(ssaoBlurredOut, coords, vec4<f32>(result / totalWeight));
+    let finalAO = select(result / totalWeight, centerAO, totalWeight < 0.0001);
+    textureStore(ssaoBlurredOut, coords, vec4<f32>(finalAO, 0.0, 0.0, 1.0));
 }
