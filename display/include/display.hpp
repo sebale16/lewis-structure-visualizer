@@ -71,6 +71,14 @@ struct Instances {
     std::span<InstanceData> GetRawData();
 };
 
+struct SSAOUniforms {
+    glm::mat4 proj;
+    glm::mat4 invProj;
+    glm::vec4 kernel[64];
+    float radius{0.2f}, bias{0.02f};
+    float padding[2];
+};
+
 class Application {
 private:
     GLFWwindow *window;
@@ -101,6 +109,7 @@ private:
     float lastFrame{0.f};
 
     // ssao
+    SSAOUniforms ssaoUniforms;
     wgpu::Buffer ssaoUniformBuffer;
     wgpu::Texture noiseTexture;
     wgpu::Texture ssaoTexture;
@@ -163,6 +172,8 @@ public:
 
     /// constructs a mesh with a point and index buffer from a gltf file; takes first mesh of loaded model
     std::expected<Mesh, std::string> LoadMeshFromGLTF(const std::string& filePath);
+
+    ~Application();
 };
 
 } // namespace display

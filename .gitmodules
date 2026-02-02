@@ -1,3 +1,6 @@
 [submodule "display/third_party/dawn"]
 	path = display/third_party/dawn
 	url = https://github.com/google/dawn.git
+[submodule "display/third_party/imgui"]
+	path = display/third_party/imgui
+	url = git@github.com:ocornut/imgui.git

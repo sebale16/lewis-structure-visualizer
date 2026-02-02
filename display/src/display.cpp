@@ -2,13 +2,19 @@
 
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_glfw.h>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+
 #include "tiny_gltf.h"
+
+#include <imgui.h>
+#include <backends/imgui_impl_wgpu.h>
+#include <backends/imgui_impl_glfw.h>
 
 #include <print>
 #include <iostream>
@@ -570,7 +576,6 @@ void display::Application::CreateSSAOPipeline() {
     // generate kernel of points to sample on hemisphere
     std::uniform_real_distribution<float> randFloats(0.0, 1.0);
     std::default_random_engine generator;
-    std::vector<glm::vec4> kernel;
     for (int i{0}; i < 64; i++) {
         // create points in hemisphere in +z dir
         glm::vec3 sample(
@@ -584,21 +589,17 @@ void display::Application::CreateSSAOPipeline() {
         float scale = (float)i / 64.0f;
         scale = glm::mix(0.1f, 1.0f, scale * scale);
         sample *= scale;
-        kernel.emplace_back(sample, 0.f);
+        ssaoUniforms.kernel[i] = glm::vec4(sample, 0.f);
     }
-    // total size is: 2 matrices (proj and inv proj), vector of vec4 (kernel), 2 floats (radius + bias), and 2 more floats for padding
-    uint64_t ssaoUniformBufferSize = 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4) + 4 * sizeof(float);
 
     wgpu::BufferDescriptor ssaoBufferDesc{
         .label = "SSAO Uniform Buffer",
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
-        .size = ssaoUniformBufferSize,
+        .size = sizeof(SSAOUniforms),
     };
     ssaoUniformBuffer = this->device.CreateBuffer(&ssaoBufferDesc);
-    // proj and inv proj are updated every frame so write kernel, radius, and bias for now
-    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4), kernel.data(), kernel.size() * sizeof(glm::vec4));
-    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4), &radius, sizeof(float));
-    this->queue.WriteBuffer(ssaoUniformBuffer, 2 * sizeof(glm::mat4) + kernel.size() * sizeof(glm::vec4) + sizeof(float), &bias, sizeof(float));
+    // proj and inv proj, radius, and bias are updated every frame so write kernel for now
+    this->queue.WriteBuffer(ssaoUniformBuffer, offsetof(SSAOUniforms, kernel), ssaoUniforms.kernel, 64 * sizeof(glm::vec4));
     
     std::vector<wgpu::BindGroupLayoutEntry> ssaoBindGroupLayoutEntries{
         // ssao uniforms
@@ -762,7 +763,7 @@ void display::Application::CreateSSAOPipeline() {
         wgpu::BindGroupEntry{
             .binding = 0,
             .buffer = ssaoUniformBuffer,
-            .size = ssaoUniformBufferSize,
+            .size = sizeof(SSAOUniforms),
         },
         // depth texture
         wgpu::BindGroupEntry{
@@ -1190,10 +1191,31 @@ bool display::Application::Initialize(uint32_t width, uint32_t height, std::stri
     CreateCompositeRenderPipeline();
     std::println("Created composite render pipeline...");
 
+    // init GUI
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForOther(window, true);
+    ImGui_ImplWGPU_InitInfo initInfo;
+    initInfo.Device = device.Get();
+    initInfo.NumFramesInFlight = 3;
+    initInfo.RenderTargetFormat = static_cast<WGPUTextureFormat>(wgpu::TextureFormat::RGBA16Float);
+    ImGui_ImplWGPU_Init(&initInfo);
+
     return true;
 }
 
 void display::Application::RenderPresent() {
+    ImGui_ImplWGPU_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("SSAO Parameters");
+    ImGui::SliderFloat("Radius", &ssaoUniforms.radius, 0.001f, 10.0f);
+    ImGui::SliderFloat("Bias", &ssaoUniforms.bias, 0.001f, 10.0f);
+    ImGui::End();
+
     wgpu::RenderPassColorAttachment colorAttachment{
         .view = colorTextureView,
         .loadOp = wgpu::LoadOp::Clear,
@@ -1240,17 +1262,18 @@ void display::Application::RenderPresent() {
 
     // process user input
     ProcessInput();
-    
     // update and write camera data to buffer
     camera.Update();
     glm::mat4 viewProjMat = camera.BuildViewProjectionMatrix();
     queue.WriteBuffer(camera.cameraBuffer, 0, &viewProjMat, sizeof(viewProjMat));
 
     // write camera projection and inverse to ssao uniform
-    glm::mat4 projMat = camera.BuildProjMatrix();
-    glm::mat4 invProjMat = glm::inverse(projMat);
-    queue.WriteBuffer(ssaoUniformBuffer, 0, &projMat, sizeof(projMat));
-    queue.WriteBuffer(ssaoUniformBuffer, sizeof(projMat), &invProjMat, sizeof(invProjMat));
+    ssaoUniforms.proj = camera.BuildProjMatrix();
+    ssaoUniforms.invProj = glm::inverse(ssaoUniforms.proj);
+    queue.WriteBuffer(ssaoUniformBuffer, 0, &ssaoUniforms.proj, sizeof(ssaoUniforms.proj));
+    queue.WriteBuffer(ssaoUniformBuffer, offsetof(SSAOUniforms, invProj), &ssaoUniforms.invProj, sizeof(ssaoUniforms.invProj));
+    queue.WriteBuffer(ssaoUniformBuffer, offsetof(SSAOUniforms, radius), &ssaoUniforms.radius, sizeof(ssaoUniforms.radius));
+    queue.WriteBuffer(ssaoUniformBuffer, offsetof(SSAOUniforms, bias), &ssaoUniforms.bias, sizeof(ssaoUniforms.bias));
 
     // command encoder for drawing + compute
     wgpu::CommandEncoderDescriptor commandEncoderDesc{ .label = "Command Encoder" };
@@ -1314,6 +1337,24 @@ void display::Application::RenderPresent() {
         compositePass.Draw(3);
         compositePass.End();
     }
+    {
+        // imgui pass
+        ImGui::Render();
+        wgpu::RenderPassColorAttachment uiAttachment{
+            .view = GetNextSurfaceTextureView(),
+            .loadOp = wgpu::LoadOp::Load,
+            .storeOp = wgpu::StoreOp::Store,
+        };
+        
+        wgpu::RenderPassDescriptor uiPassDesc{
+            .colorAttachmentCount = 1,
+            .colorAttachments = &uiAttachment,
+        };
+
+        wgpu::RenderPassEncoder uiPass = commandEncoder.BeginRenderPass(&uiPassDesc);
+        ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), uiPass.Get());
+        uiPass.End();
+    }
 
     // finish recording
     wgpu::CommandBufferDescriptor commandBufferDesc { .label = "Command Buffer" };
@@ -1333,4 +1374,10 @@ void display::Application::RenderPresent() {
 
 bool display::Application::KeepRunning() {
     return !glfwWindowShouldClose(window);
+}
+
+display::Application::~Application() {
+    ImGui_ImplWGPU_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 }
