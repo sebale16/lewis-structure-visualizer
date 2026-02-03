@@ -49,7 +49,7 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let fragPos = getViewPos(normalizedUV, dimsFull);
     // scale normal to full res
     let normal = textureLoad(normalTexture, fullResPixelCoords, 0).xyz;
-    let noiseCoords = vec2<i32>(id.xy % 16u);
+    let noiseCoords = vec2<i32>(id.xy % 64u);
     let randVec = textureLoad(noiseTexture, noiseCoords, 0).xyz;
 
     // build tangent, bitangent, normal matrix
@@ -80,11 +80,16 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         // range check to not render shadows as a result of occlusion from distant objects
         let dist = abs(fragPos.z - actualPos.z);
-        // let rangeCheck = exp(-dist * 10.0 / uniforms.radius); 
-        let rangeCheck = smoothstep(uniforms.radius, 0.0, dist);
+        let rangeCheckBehind = exp(-dist * 3.0 / uniforms.radius); 
+        // let rangeCheckFront = exp(-dist * 50.0 / uniforms.radius);
+        let rangeCheckFront = max(0.0, 1.0 - dist / (uniforms.radius / 8));
+        // let rangeCheck = smoothstep(uniforms.radius, 0.0, dist);
         // if actualPos.z > worldPos.z, then sampled pos is in behind object
-        if (actualPos.z >= worldPos.z + uniforms.bias || actualPos.z < worldPos.z - uniforms.bias) {
-            occlusion += 1.0 * rangeCheck;
+        if (actualPos.z >= worldPos.z + uniforms.bias) {
+            occlusion += 1.0 * rangeCheckBehind;
+        } else if (actualPos.z < worldPos.z - uniforms.bias) {
+            // if sampled object is in front, only sample if it is close enough
+            occlusion += 1.0 * rangeCheckFront;
         }
     }
 

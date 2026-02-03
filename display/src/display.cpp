@@ -584,7 +584,7 @@ void display::Application::CreateSSAOPipeline() {
         );
         // each point is on surface of hemisphere
         sample = glm::normalize(sample);
-        // accelerating scale function
+        // distribute points along radius of hemisphere
         float scale = (float)i / 64.0f;
         scale = glm::mix(0.1f, 1.0f, scale * scale);
         sample *= scale;
@@ -674,16 +674,16 @@ void display::Application::CreateSSAOPipeline() {
     ssaoPipeline = device.CreateComputePipeline(&ssaoPipelineDescriptor);
 
     // depth and normal textures are already created in render pipeline
-    // create noise texture (16x16 random values since bytes per row in texture data must be multiple of 256)
+    // create noise texture (64x64 random values since bytes per row in texture data must be multiple of 256)
     std::vector<glm::vec4> noise;
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 64 * 64; i++) {
         noise.emplace_back(randFloats(generator) * 2.f - 1.f, randFloats(generator) * 2.f - 1.f, 0.f, 0.f);
     }
     wgpu::TextureDescriptor noiseTextureDesc{
         .label = "Noise Texture",
         .usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding,
         .dimension = wgpu::TextureDimension::e2D,
-        .size = {16, 16, 1},
+        .size = {64, 64, 1},
         .format = wgpu::TextureFormat::RGBA32Float,
         .mipLevelCount = 1,
         .sampleCount = 1,
@@ -696,10 +696,10 @@ void display::Application::CreateSSAOPipeline() {
         .aspect = wgpu::TextureAspect::All,
     };
     wgpu::TexelCopyBufferLayout texelCopyBufferLayout{
-        .bytesPerRow = 16 * sizeof(glm::vec4),
-        .rowsPerImage = 16,
+        .bytesPerRow = 64 * sizeof(glm::vec4),
+        .rowsPerImage = 64,
     };
-    wgpu::Extent3D extent3d{16, 16, 1};
+    wgpu::Extent3D extent3d{64, 64, 1};
     queue.WriteTexture(
         &texelCopyTextureInfo,
         noise.data(),
@@ -1322,7 +1322,7 @@ void display::Application::RenderPresent() {
         ssaoBlurPass.SetBindGroup(0, ssaoBlurBindGroup);
         
         // shader uses 8x8 workgroups, so must calculate how many groups to fill entire screen
-        ssaoBlurPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH/2+ 7) / 8), static_cast<uint32_t>((HEIGHT/2 + 7) / 8));
+        ssaoBlurPass.DispatchWorkgroups(static_cast<uint32_t>((WIDTH/2 + 7) / 8), static_cast<uint32_t>((HEIGHT/2 + 7) / 8));
 
         ssaoBlurPass.End();
     }
