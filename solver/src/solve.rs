@@ -460,6 +460,9 @@ pub fn build_model(input_molecule: &ParsedMolecule) -> Model {
 
     bond_all_to_central(atoms_count, &mut molecule, central_atom.clone(), BondType::SIGMA);
 
+    dbg!(&molecule.atoms);
+    dbg!(&molecule.bonds_with);
+
     // if all atoms are bonded but are missing electrons, create double/triple bonds
     // else hybridize further to allow for more bonding slots
 
@@ -493,11 +496,13 @@ pub fn build_model(input_molecule: &ParsedMolecule) -> Model {
         atom.hybridization = new_hy;
     }
 
-    // bond each extra p orbital to a central p orbital
-    // bonded p orbitals (pi bonds) shown by a "ghost" electron in p_orbitals array to make it 2
-    while central_atom.borrow().p_orbitals.contains(&1u8) {
-        // search for atom that has an empty slot in p_orbitals, meaning it only has 1 electron
-        bond_all_to_central(atoms_count, &mut molecule, central_atom.clone(), BondType::PI);
+    // bond each extra p orbital to a central p orbital if other atoms have p orbitals
+    if molecule.bonds_with[0].iter().any(|a| a.0.borrow().p_orbitals.len() > 0) {
+        // bonded p orbitals (pi bonds) shown by a "ghost" electron in p_orbitals array to make it 2
+        while central_atom.borrow().p_orbitals.contains(&1u8) {
+            // search for atom that has an empty slot in p_orbitals, meaning it only has 1 electron
+            bond_all_to_central(atoms_count, &mut molecule, central_atom.clone(), BondType::PI);
+        }
     }
 
     // if excess p_orbitals, check charge
