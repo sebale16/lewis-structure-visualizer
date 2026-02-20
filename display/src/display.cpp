@@ -434,7 +434,7 @@ void display::Application::CreateGeometryRenderPipeline() {
     wgpu::PrimitiveState primitiveState{
         .topology = wgpu::PrimitiveTopology::TriangleList,
         .frontFace = wgpu::FrontFace::CCW,
-        .cullMode = wgpu::CullMode::None,
+        .cullMode = wgpu::CullMode::Back,
     };
     geoRenderPipelineDescriptor.primitive = primitiveState;
 
@@ -469,13 +469,11 @@ void display::Application::CreateGeometryRenderPipeline() {
     };
     geoRenderPipelineDescriptor.fragment = &fragmentState;
 
-    /// describe stencil/depth fragment state
+    /// describe depth fragment state
     wgpu::DepthStencilState depthStencilState{
         .format = wgpu::TextureFormat::Depth32Float,
         .depthWriteEnabled = wgpu::OptionalBool::True,
         .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
-        .stencilReadMask = 0,
-        .stencilWriteMask = 0,
     };
     geoRenderPipelineDescriptor.depthStencil = &depthStencilState;
 
@@ -484,7 +482,7 @@ void display::Application::CreateGeometryRenderPipeline() {
         cameraBindGroupLayout,
     };
     wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
-        .label = "Render Pipeline Layout",
+        .label = "Geometry Render Pipeline Layout",
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = bindGroupLayouts.data(),
     };
@@ -799,7 +797,6 @@ void display::Application::CreateSSAOPipeline() {
     };
     ssaoBindGroup = device.CreateBindGroup(&ssaoBindGroupDesc);
 
-
     // ssao blur compute pipeline
     wgpu::ComputePipelineDescriptor ssaoBlurPipelineDescriptor { .label = "SSAO Blur Pipeline" };
     auto ssaoBlurShaderModule = LoadShaderModule("res/shaders/blur_ssao.wgsl");
@@ -1032,6 +1029,151 @@ void display::Application::CreateCompositeRenderPipeline() {
         .entries = compositeBindGroupEntries.data(),
     };
     compositeBindGroup = device.CreateBindGroup(&compositeBindGroupDesc);
+}
+
+void display::Application::CreateCloudRenderPipeline() {
+    wgpu::RenderPipelineDescriptor cloudRenderPipelineDescriptor { .label = "Cloud Render Pipeline" };
+    auto shaderModule = LoadShaderModule("res/shaders/cloud.wgsl");
+
+    wgpu::VertexAttribute cornerPosAttribute{
+        .format = wgpu::VertexFormat::Float32x2,
+        .offset = 0,
+        .shaderLocation = 0,
+    };
+    wgpu::VertexAttribute centerPosAttribute{
+        .format = wgpu::VertexFormat::Float32x3,
+        .offset = offsetof(CloudInstanceData, centerPos),
+        .shaderLocation = 1,
+    };
+    wgpu::VertexAttribute scaleAttribute{
+        .format = wgpu::VertexFormat::Float32x2,
+        .offset = offsetof(CloudInstanceData, scale),
+        .shaderLocation = 2,
+    };
+    wgpu::VertexAttribute colorAttribute{
+        .format = wgpu::VertexFormat::Float32x3,
+        .offset = offsetof(CloudInstanceData, color),
+        .shaderLocation = 3,
+    };
+
+    std::vector<wgpu::VertexAttribute> instanceAttributes = { cornerPosAttribute, centerPosAttribute, scaleAttribute, colorAttribute };
+    wgpu::VertexBufferLayout instanceBufferLayout{
+        .stepMode = wgpu::VertexStepMode::Instance,
+        .arrayStride = sizeof(CloudInstanceData),
+        .attributeCount = instanceAttributes.size(),
+        .attributes = instanceAttributes.data(),
+    };
+
+    /// describe vertex pipeline state
+    std::vector<wgpu::VertexBufferLayout> vertexBufferLayouts = { instanceBufferLayout };
+    wgpu::VertexState vertexState{
+        .module = shaderModule,
+        .entryPoint = "vs_cloud",
+        .bufferCount = 1,
+        .buffers = vertexBufferLayouts.data(),
+    };
+    cloudRenderPipelineDescriptor.vertex = vertexState;
+
+    /// describe primitive pipeline state
+    wgpu::PrimitiveState primitiveState{
+        .topology = wgpu::PrimitiveTopology::TriangleList,
+        .frontFace = wgpu::FrontFace::CCW,
+        .cullMode = wgpu::CullMode::None,
+    };
+    cloudRenderPipelineDescriptor.primitive = primitiveState;
+
+    /// describe fragment pipeline state
+    wgpu::BlendState blendState{
+        .color =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::SrcAlpha,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+            },
+        .alpha = wgpu::BlendComponent{
+            .operation = wgpu::BlendOperation::Add,
+            .srcFactor = wgpu::BlendFactor::SrcAlpha,
+            .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+        }};
+    wgpu::ColorTargetState colorTargetState{
+        .format = textureFormat,
+        .blend = &blendState,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+    std::vector<wgpu::ColorTargetState> targets { colorTargetState };
+    wgpu::FragmentState fragmentState{
+        .module = shaderModule,
+        .entryPoint = "fs_cloud",
+        .targetCount = 1,
+        .targets = targets.data(),
+    };
+    cloudRenderPipelineDescriptor.fragment = &fragmentState;
+
+    /// describe depth fragment state
+    wgpu::DepthStencilState depthStencilState{
+        .format = wgpu::TextureFormat::Depth32Float,
+        .depthWriteEnabled = wgpu::OptionalBool::False,
+        .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
+    };
+    cloudRenderPipelineDescriptor.depthStencil = &depthStencilState;
+
+    /// describe pipeline layout
+    std::vector<wgpu::BindGroupLayoutEntry> cloudBindGroupLayoutEntries{
+        // depth texture
+        wgpu::BindGroupLayoutEntry{
+            .binding = 0,
+            .visibility = wgpu::ShaderStage::Fragment,
+            .texture = {
+                .sampleType = wgpu::TextureSampleType::Depth,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            }
+        },
+        // sampler
+        wgpu::BindGroupLayoutEntry{
+            .binding = 1,
+            .visibility = wgpu::ShaderStage::Fragment,
+            .sampler = { .type = wgpu::SamplerBindingType::Filtering },
+        },
+    };
+
+    wgpu::BindGroupLayoutDescriptor cloudBindGroupLayoutDesc{
+        .label = "Cloud Bind Group Layout",
+        .entryCount = 2,
+        .entries = cloudBindGroupLayoutEntries.data(),
+    };
+    wgpu::BindGroupLayout cloudBindGroupLayout = device.CreateBindGroupLayout(&cloudBindGroupLayoutDesc);
+    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {cameraBindGroupLayout, cloudBindGroupLayout};
+    wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
+        .label = "Cloud Render Pipeline Layout",
+        .bindGroupLayoutCount = 2,
+        .bindGroupLayouts = bindGroupLayouts.data(),
+    };
+    cloudRenderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
+
+    /// create render pipeline
+    cloudRenderPipeline = device.CreateRenderPipeline(&cloudRenderPipelineDescriptor);
+
+    // describe cloud bind group entries
+    std::vector<wgpu::BindGroupEntry> cloudBindGroupEntries {
+        // depth texture
+        wgpu::BindGroupEntry{
+            .binding = 0,
+            .textureView = depthTextureView,
+        },
+        // sampler
+        wgpu::BindGroupEntry{
+            .binding = 1,
+            .sampler = linearSampler,
+        },
+    };
+
+    wgpu::BindGroupDescriptor cloudBindGroupDesc{
+        .label = "Cloud Bind Group",
+        .layout = cloudBindGroupLayout,
+        .entryCount = 2,
+        .entries = cloudBindGroupEntries.data(),
+    };
+    cloudBindGroup = device.CreateBindGroup(&cloudBindGroupDesc);
 }
 
 wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
@@ -1330,10 +1472,11 @@ void display::Application::RenderPresent() {
         // record composite pass
         wgpu::RenderPassEncoder compositePass = commandEncoder.BeginRenderPass(&compositeRenderPassDesc);
         compositePass.SetPipeline(compositeRenderPipeline);
-
         compositePass.SetBindGroup(0, compositeBindGroup);
-        // draw three vertices for the triangle
+        // draw three vertices for the triangle covering the entire screen
         compositePass.Draw(3);
+
+        // draw p orbital clouds
         compositePass.End();
     }
     {

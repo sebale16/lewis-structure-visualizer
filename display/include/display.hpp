@@ -79,6 +79,20 @@ struct SSAOUniforms {
     float padding[2];
 };
 
+struct CloudInstanceData {
+    glm::vec2 cornerPos;
+    glm::vec3 centerPos;
+    glm::vec2 scale;
+    glm::vec3 color;
+};
+
+struct CloudInstances {
+    wgpu::Buffer instanceBuffer;
+    std::vector<CloudInstanceData> instanceData;
+
+    std::span<CloudInstanceData> GetRawData();
+};
+
 class Application {
 private:
     GLFWwindow *window;
@@ -123,9 +137,11 @@ private:
     wgpu::BindGroup ssaoBlurBindGroup;
     wgpu::ComputePipeline ssaoBlurPipeline;
 
-    // composite
+    // composite + cloud
     wgpu::BindGroup compositeBindGroup;
     wgpu::RenderPipeline compositeRenderPipeline;
+    wgpu::BindGroup cloudBindGroup;
+    wgpu::RenderPipeline cloudRenderPipeline;
 
     std::unordered_map<std::string, Mesh> meshes;
     std::unordered_map<std::string, Instances> instances;
@@ -151,11 +167,14 @@ private:
     /// initialize geometry render pipeline
     void CreateGeometryRenderPipeline();
 
+    /// initialize SSAO pipeline
+    void CreateSSAOPipeline();
+
     /// initialize composite render pipeline
     void CreateCompositeRenderPipeline();
 
-    /// initialize SSAO pipeline
-    void CreateSSAOPipeline();
+    /// initialize cloud pipeline
+    void CreateCloudRenderPipeline();
 
     /// returns the next wgpu::TextureView that can be drawn on
     wgpu::TextureView GetNextSurfaceTextureView();

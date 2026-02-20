@@ -80,15 +80,15 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         // range check to not render shadows as a result of occlusion from distant objects
         let dist = abs(fragPos.z - actualPos.z);
-        let rangeCheckBehind = exp(-dist * 3.0 / uniforms.radius); 
         // let rangeCheckFront = exp(-dist * 50.0 / uniforms.radius);
-        let rangeCheckFront = max(0.0, 1.0 - dist / (uniforms.radius / 8));
         // let rangeCheck = smoothstep(uniforms.radius, 0.0, dist);
         // if actualPos.z > worldPos.z, then sampled pos is in behind object
         if (actualPos.z >= worldPos.z + uniforms.bias) {
+            let rangeCheckBehind = exp(-dist * 3.0 / uniforms.radius); 
             occlusion += 1.0 * rangeCheckBehind;
         } else if (actualPos.z < worldPos.z - uniforms.bias) {
             // if sampled object is in front, only sample if it is close enough
+            let rangeCheckFront = max(0.0, 1.0 - dist / (uniforms.radius / 8));
             occlusion += 1.0 * rangeCheckFront;
         }
     }
