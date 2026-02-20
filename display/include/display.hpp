@@ -75,14 +75,12 @@ struct SSAOUniforms {
     glm::mat4 proj;
     glm::mat4 invProj;
     glm::vec4 kernel[64];
-    float radius{1.f}, bias{0.075f};
+    float radius{0.25f}, bias{0.025f};
     float padding[2];
 };
 
 struct CloudInstanceData {
-    glm::vec2 cornerPos;
-    glm::vec3 centerPos;
-    glm::vec2 scale;
+    glm::mat4 modelMatrix;
     glm::vec3 color;
 };
 
@@ -152,7 +150,7 @@ private:
     /// create a `Camera`, its buffer, and its bind group
     void CreateCamera();
 
-    /// creates a vector of `Instances` and their buffers based on `molecule`
+    /// creates a vector of `Instances` and `CloudInstances` and their buffers based on `molecule`
     void CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms);
 
     /// configure surface

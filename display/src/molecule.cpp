@@ -333,3 +333,17 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
         } else return std::unexpected("Could not find non-central atoms!");
     }
 }
+
+std::expected<std::vector<PiBond>, std::string> Molecule::ComputePiBondLocs() {
+    std::vector<PiBond> piBonds;
+    std::vector<std::pair<std::weak_ptr<Atom>, std::weak_ptr<Atom>>> pairsOfPiBonds;
+    // get atoms that have p orbitals
+    for (int i = 0; i < atoms.size(); i++) {
+        auto piBondedAtom = bondsWith[i] | std::views::filter([](auto& b) {
+            return b.second == BondType::PI;
+        });
+
+        // if swapped pair already exists in pairsOfPiBonds, then don't add another one
+    }
+    return std::unexpected("No atoms with p orbitals!");
+}

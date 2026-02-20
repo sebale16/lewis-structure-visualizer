@@ -125,6 +125,12 @@ struct BondedAtom {
     AtomMatrix ToMatrix() const;
 };
 
+struct PiBond {
+    glm::vec2 cornerPos;
+    std::pair<glm::vec3, glm::vec3> centerPos;
+    glm::vec2 scale;
+};
+
 class Molecule {
 private:
     std::vector<std::shared_ptr<Atom>> atoms;
@@ -148,9 +154,9 @@ public:
     // computes location of center of atoms and their rotation, with central atom at origin; based on geometry;
     // returns error message if called on empty molecule
     std::expected<std::vector<BondedAtom>, std::string> ComputeAtomLocsRots();
+
+    // computes location of pi bonds, if any; returns error message if no pi bonds in molecule
+    std::expected<std::vector<PiBond>, std::string> ComputePiBondLocs();
 };
 
 } // namespace model
-
-// when zoomed out, element names should be written on the atoms
-// start fading out when zooming in and then nucleus should be visible

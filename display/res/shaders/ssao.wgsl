@@ -94,6 +94,7 @@ fn compute_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // normalize
-    let finalSSAO = 1.0 - (occlusion / 64.0);
+    let result = 1.0 - (occlusion / 64.0);
+    let finalSSAO = pow(max(0.0, result), 2.2);
     textureStore(outTexture, vec2<i32>(id.xy), vec4<f32>(finalSSAO));
 }

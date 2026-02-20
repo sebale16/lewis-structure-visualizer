@@ -39,7 +39,7 @@ fn vs_main(v: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = camera.view_proj * model_matrix * vec4f(v.position, 1.0);
     out.color = instance.color;
-    out.normal = normalize((camera.view_proj * model_matrix * vec4f(v.normal, 0.0)).xyz);
+    out.normal = normalize((model_matrix * vec4f(v.normal, 0.0)).xyz);
     return out;
 }
 

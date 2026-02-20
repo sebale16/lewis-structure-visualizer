@@ -127,6 +127,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
     std::vector<InstanceData> sInstances;
     std::vector<InstanceData> spInstances;
     std::vector<InstanceData> pInstances;
+    std::vector<CloudInstanceData> piCloudInstances;
     // build translation + rotation matrix for each atom that will be applied to its set of orbitals
     // translation + rotation are from locs + rots
     for (const auto& atom : bondedAtoms) {
@@ -142,12 +143,12 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
         // rotate: apply the atom's overall rotation, then the specific orbital's rotation
         atomModelMatrix = atomModelMatrix * glm::toMat4(atom.rot);
 
-        // since spheres are s orbitals prepend to sIntances vector
+        // since spheres are s orbitals prepend to sInstances vector
         sInstances.insert(
                 sInstances.begin(),
                 InstanceData{
                     .modelMatrix = glm::scale(atomModelMatrix, glm::vec3(S_ORBITAL_SCALE / 1.5)),
-                    .color = glm::vec4(.5, .5, .5, 1)
+                    .color = glm::vec4(0.14f, 0.14f, 0.14f, 1.f)
                 }
         );
 
@@ -166,13 +167,13 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
             // depending on the orbital type, add to corresponding vector
             switch (bQPair.first) {
                 case molecule::OrbitalType::s:
-                    sInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.3f, 0.f, 0.3f, 1.f)});
+                    sInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.073f, 0.f, 0.073f, 1.f)});
                     break;
                 case molecule::OrbitalType::sp:
-                    spInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.f, 0.3f, 0.45f, 1.f) });
+                    spInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.f, 0.073f, 0.171f, 1.f) });
                     break;
                 case molecule::OrbitalType::p:
-                    pInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.45f, 0.f, 0.2f, 1.f) });
+                    pInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.171f, 0.f, 0.033f, 1.f) });
                     break;
             }
         }
@@ -448,8 +449,8 @@ void display::Application::CreateGeometryRenderPipeline() {
             },
         .alpha = wgpu::BlendComponent{
             .operation = wgpu::BlendOperation::Add,
-            .srcFactor = wgpu::BlendFactor::Zero,
-            .dstFactor = wgpu::BlendFactor::One,
+            .srcFactor = wgpu::BlendFactor::One,
+            .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
         }};
     wgpu::ColorTargetState colorTargetState{
         .format = textureFormat,
@@ -457,7 +458,7 @@ void display::Application::CreateGeometryRenderPipeline() {
         .writeMask = wgpu::ColorWriteMask::All,
     };
     wgpu::ColorTargetState normalTargetState{
-        .format = textureFormat,
+        .format = wgpu::TextureFormat::RGBA16Float,
         .writeMask = wgpu::ColorWriteMask::All,
     };
     std::vector<wgpu::ColorTargetState> targets { colorTargetState, normalTargetState };
@@ -540,7 +541,7 @@ void display::Application::CreateGeometryRenderPipeline() {
         .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
         .dimension = wgpu::TextureDimension::e2D,
         .size = {WIDTH, HEIGHT, 1},
-        .format = textureFormat,
+        .format = wgpu::TextureFormat::RGBA16Float,
     };
     normalTexture = device.CreateTexture(&normalTextureDesc);
 
@@ -1031,150 +1032,150 @@ void display::Application::CreateCompositeRenderPipeline() {
     compositeBindGroup = device.CreateBindGroup(&compositeBindGroupDesc);
 }
 
-void display::Application::CreateCloudRenderPipeline() {
-    wgpu::RenderPipelineDescriptor cloudRenderPipelineDescriptor { .label = "Cloud Render Pipeline" };
-    auto shaderModule = LoadShaderModule("res/shaders/cloud.wgsl");
-
-    wgpu::VertexAttribute cornerPosAttribute{
-        .format = wgpu::VertexFormat::Float32x2,
-        .offset = 0,
-        .shaderLocation = 0,
-    };
-    wgpu::VertexAttribute centerPosAttribute{
-        .format = wgpu::VertexFormat::Float32x3,
-        .offset = offsetof(CloudInstanceData, centerPos),
-        .shaderLocation = 1,
-    };
-    wgpu::VertexAttribute scaleAttribute{
-        .format = wgpu::VertexFormat::Float32x2,
-        .offset = offsetof(CloudInstanceData, scale),
-        .shaderLocation = 2,
-    };
-    wgpu::VertexAttribute colorAttribute{
-        .format = wgpu::VertexFormat::Float32x3,
-        .offset = offsetof(CloudInstanceData, color),
-        .shaderLocation = 3,
-    };
-
-    std::vector<wgpu::VertexAttribute> instanceAttributes = { cornerPosAttribute, centerPosAttribute, scaleAttribute, colorAttribute };
-    wgpu::VertexBufferLayout instanceBufferLayout{
-        .stepMode = wgpu::VertexStepMode::Instance,
-        .arrayStride = sizeof(CloudInstanceData),
-        .attributeCount = instanceAttributes.size(),
-        .attributes = instanceAttributes.data(),
-    };
-
-    /// describe vertex pipeline state
-    std::vector<wgpu::VertexBufferLayout> vertexBufferLayouts = { instanceBufferLayout };
-    wgpu::VertexState vertexState{
-        .module = shaderModule,
-        .entryPoint = "vs_cloud",
-        .bufferCount = 1,
-        .buffers = vertexBufferLayouts.data(),
-    };
-    cloudRenderPipelineDescriptor.vertex = vertexState;
-
-    /// describe primitive pipeline state
-    wgpu::PrimitiveState primitiveState{
-        .topology = wgpu::PrimitiveTopology::TriangleList,
-        .frontFace = wgpu::FrontFace::CCW,
-        .cullMode = wgpu::CullMode::None,
-    };
-    cloudRenderPipelineDescriptor.primitive = primitiveState;
-
-    /// describe fragment pipeline state
-    wgpu::BlendState blendState{
-        .color =
-            wgpu::BlendComponent{
-                .operation = wgpu::BlendOperation::Add,
-                .srcFactor = wgpu::BlendFactor::SrcAlpha,
-                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
-            },
-        .alpha = wgpu::BlendComponent{
-            .operation = wgpu::BlendOperation::Add,
-            .srcFactor = wgpu::BlendFactor::SrcAlpha,
-            .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
-        }};
-    wgpu::ColorTargetState colorTargetState{
-        .format = textureFormat,
-        .blend = &blendState,
-        .writeMask = wgpu::ColorWriteMask::All,
-    };
-    std::vector<wgpu::ColorTargetState> targets { colorTargetState };
-    wgpu::FragmentState fragmentState{
-        .module = shaderModule,
-        .entryPoint = "fs_cloud",
-        .targetCount = 1,
-        .targets = targets.data(),
-    };
-    cloudRenderPipelineDescriptor.fragment = &fragmentState;
-
-    /// describe depth fragment state
-    wgpu::DepthStencilState depthStencilState{
-        .format = wgpu::TextureFormat::Depth32Float,
-        .depthWriteEnabled = wgpu::OptionalBool::False,
-        .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
-    };
-    cloudRenderPipelineDescriptor.depthStencil = &depthStencilState;
-
-    /// describe pipeline layout
-    std::vector<wgpu::BindGroupLayoutEntry> cloudBindGroupLayoutEntries{
-        // depth texture
-        wgpu::BindGroupLayoutEntry{
-            .binding = 0,
-            .visibility = wgpu::ShaderStage::Fragment,
-            .texture = {
-                .sampleType = wgpu::TextureSampleType::Depth,
-                .viewDimension = wgpu::TextureViewDimension::e2D,
-            }
-        },
-        // sampler
-        wgpu::BindGroupLayoutEntry{
-            .binding = 1,
-            .visibility = wgpu::ShaderStage::Fragment,
-            .sampler = { .type = wgpu::SamplerBindingType::Filtering },
-        },
-    };
-
-    wgpu::BindGroupLayoutDescriptor cloudBindGroupLayoutDesc{
-        .label = "Cloud Bind Group Layout",
-        .entryCount = 2,
-        .entries = cloudBindGroupLayoutEntries.data(),
-    };
-    wgpu::BindGroupLayout cloudBindGroupLayout = device.CreateBindGroupLayout(&cloudBindGroupLayoutDesc);
-    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {cameraBindGroupLayout, cloudBindGroupLayout};
-    wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
-        .label = "Cloud Render Pipeline Layout",
-        .bindGroupLayoutCount = 2,
-        .bindGroupLayouts = bindGroupLayouts.data(),
-    };
-    cloudRenderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
-
-    /// create render pipeline
-    cloudRenderPipeline = device.CreateRenderPipeline(&cloudRenderPipelineDescriptor);
-
-    // describe cloud bind group entries
-    std::vector<wgpu::BindGroupEntry> cloudBindGroupEntries {
-        // depth texture
-        wgpu::BindGroupEntry{
-            .binding = 0,
-            .textureView = depthTextureView,
-        },
-        // sampler
-        wgpu::BindGroupEntry{
-            .binding = 1,
-            .sampler = linearSampler,
-        },
-    };
-
-    wgpu::BindGroupDescriptor cloudBindGroupDesc{
-        .label = "Cloud Bind Group",
-        .layout = cloudBindGroupLayout,
-        .entryCount = 2,
-        .entries = cloudBindGroupEntries.data(),
-    };
-    cloudBindGroup = device.CreateBindGroup(&cloudBindGroupDesc);
-}
+//void display::Application::CreateCloudRenderPipeline() {
+//    wgpu::RenderPipelineDescriptor cloudRenderPipelineDescriptor { .label = "Cloud Render Pipeline" };
+//    auto shaderModule = LoadShaderModule("res/shaders/cloud.wgsl");
+//
+//    wgpu::VertexAttribute cornerPosAttribute{
+//        .format = wgpu::VertexFormat::Float32x2,
+//        .offset = 0,
+//        .shaderLocation = 0,
+//    };
+//    wgpu::VertexAttribute centerPosAttribute{
+//        .format = wgpu::VertexFormat::Float32x3,
+//        .offset = offsetof(CloudInstanceData, centerPos),
+//        .shaderLocation = 1,
+//    };
+//    wgpu::VertexAttribute scaleAttribute{
+//        .format = wgpu::VertexFormat::Float32x2,
+//        .offset = offsetof(CloudInstanceData, scale),
+//        .shaderLocation = 2,
+//    };
+//    wgpu::VertexAttribute colorAttribute{
+//        .format = wgpu::VertexFormat::Float32x3,
+//        .offset = offsetof(CloudInstanceData, color),
+//        .shaderLocation = 3,
+//    };
+//
+//    std::vector<wgpu::VertexAttribute> instanceAttributes = { cornerPosAttribute, centerPosAttribute, scaleAttribute, colorAttribute };
+//    wgpu::VertexBufferLayout instanceBufferLayout{
+//        .stepMode = wgpu::VertexStepMode::Instance,
+//        .arrayStride = sizeof(CloudInstanceData),
+//        .attributeCount = instanceAttributes.size(),
+//        .attributes = instanceAttributes.data(),
+//    };
+//
+//    /// describe vertex pipeline state
+//    std::vector<wgpu::VertexBufferLayout> vertexBufferLayouts = { instanceBufferLayout };
+//    wgpu::VertexState vertexState{
+//        .module = shaderModule,
+//        .entryPoint = "vs_cloud",
+//        .bufferCount = 1,
+//        .buffers = vertexBufferLayouts.data(),
+//    };
+//    cloudRenderPipelineDescriptor.vertex = vertexState;
+//
+//    /// describe primitive pipeline state
+//    wgpu::PrimitiveState primitiveState{
+//        .topology = wgpu::PrimitiveTopology::TriangleList,
+//        .frontFace = wgpu::FrontFace::CCW,
+//        .cullMode = wgpu::CullMode::None,
+//    };
+//    cloudRenderPipelineDescriptor.primitive = primitiveState;
+//
+//    /// describe fragment pipeline state
+//    wgpu::BlendState blendState{
+//        .color =
+//            wgpu::BlendComponent{
+//                .operation = wgpu::BlendOperation::Add,
+//                .srcFactor = wgpu::BlendFactor::SrcAlpha,
+//                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+//            },
+//        .alpha = wgpu::BlendComponent{
+//            .operation = wgpu::BlendOperation::Add,
+//            .srcFactor = wgpu::BlendFactor::SrcAlpha,
+//            .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+//        }};
+//    wgpu::ColorTargetState colorTargetState{
+//        .format = textureFormat,
+//        .blend = &blendState,
+//        .writeMask = wgpu::ColorWriteMask::All,
+//    };
+//    std::vector<wgpu::ColorTargetState> targets { colorTargetState };
+//    wgpu::FragmentState fragmentState{
+//        .module = shaderModule,
+//        .entryPoint = "fs_cloud",
+//        .targetCount = 1,
+//        .targets = targets.data(),
+//    };
+//    cloudRenderPipelineDescriptor.fragment = &fragmentState;
+//
+//    /// describe depth fragment state
+//    wgpu::DepthStencilState depthStencilState{
+//        .format = wgpu::TextureFormat::Depth32Float,
+//        .depthWriteEnabled = wgpu::OptionalBool::False,
+//        .depthCompare = wgpu::CompareFunction::Less, // fragment is blended only if depth is less than current
+//    };
+//    cloudRenderPipelineDescriptor.depthStencil = &depthStencilState;
+//
+//    /// describe pipeline layout
+//    std::vector<wgpu::BindGroupLayoutEntry> cloudBindGroupLayoutEntries{
+//        // depth texture
+//        wgpu::BindGroupLayoutEntry{
+//            .binding = 0,
+//            .visibility = wgpu::ShaderStage::Fragment,
+//            .texture = {
+//                .sampleType = wgpu::TextureSampleType::Depth,
+//                .viewDimension = wgpu::TextureViewDimension::e2D,
+//            }
+//        },
+//        // sampler
+//        wgpu::BindGroupLayoutEntry{
+//            .binding = 1,
+//            .visibility = wgpu::ShaderStage::Fragment,
+//            .sampler = { .type = wgpu::SamplerBindingType::Filtering },
+//        },
+//    };
+//
+//    wgpu::BindGroupLayoutDescriptor cloudBindGroupLayoutDesc{
+//        .label = "Cloud Bind Group Layout",
+//        .entryCount = 2,
+//        .entries = cloudBindGroupLayoutEntries.data(),
+//    };
+//    wgpu::BindGroupLayout cloudBindGroupLayout = device.CreateBindGroupLayout(&cloudBindGroupLayoutDesc);
+//    std::vector<wgpu::BindGroupLayout> bindGroupLayouts = {cameraBindGroupLayout, cloudBindGroupLayout};
+//    wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{
+//        .label = "Cloud Render Pipeline Layout",
+//        .bindGroupLayoutCount = 2,
+//        .bindGroupLayouts = bindGroupLayouts.data(),
+//    };
+//    cloudRenderPipelineDescriptor.layout = device.CreatePipelineLayout(&pipelineLayoutDesc);
+//
+//    /// create render pipeline
+//    cloudRenderPipeline = device.CreateRenderPipeline(&cloudRenderPipelineDescriptor);
+//
+//    // describe cloud bind group entries
+//    std::vector<wgpu::BindGroupEntry> cloudBindGroupEntries {
+//        // depth texture
+//        wgpu::BindGroupEntry{
+//            .binding = 0,
+//            .textureView = depthTextureView,
+//        },
+//        // sampler
+//        wgpu::BindGroupEntry{
+//            .binding = 1,
+//            .sampler = linearSampler,
+//        },
+//    };
+//
+//    wgpu::BindGroupDescriptor cloudBindGroupDesc{
+//        .label = "Cloud Bind Group",
+//        .layout = cloudBindGroupLayout,
+//        .entryCount = 2,
+//        .entries = cloudBindGroupEntries.data(),
+//    };
+//    cloudBindGroup = device.CreateBindGroup(&cloudBindGroupDesc);
+//}
 
 wgpu::TextureView display::Application::GetNextSurfaceTextureView() {
     // get next texture to be presented
@@ -1341,7 +1342,7 @@ bool display::Application::Initialize(uint32_t width, uint32_t height, std::stri
     ImGui_ImplWGPU_InitInfo initInfo;
     initInfo.Device = device.Get();
     initInfo.NumFramesInFlight = 3;
-    initInfo.RenderTargetFormat = static_cast<WGPUTextureFormat>(wgpu::TextureFormat::RGBA16Float);
+    initInfo.RenderTargetFormat = static_cast<WGPUTextureFormat>(textureFormat);
     ImGui_ImplWGPU_Init(&initInfo);
 
     return true;
