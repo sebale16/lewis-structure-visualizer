@@ -1,6 +1,9 @@
 #pragma once
 
-#include "config.hpp"
+#include "glm_config.hpp"
+namespace display {
+    struct InstanceData;
+}
 
 #include <memory>
 #include <vector>
@@ -35,6 +38,11 @@
 // should molecule with 2 atoms be placed so that midway point is at (0,0,0)
 #ifndef CENTRALIZE
 #define CENTRALIZE 1
+#endif
+
+// width of p lobe model
+#ifndef P_LOBE_WIDTH
+#define P_LOBE_WIDTH 2.f
 #endif
 
 namespace molecule {
@@ -100,7 +108,10 @@ struct Atom {
     std::string name;
     // proton count in atom (used to make sphere representing atoms bigger/smaller)
     int protonCount;
+    // relative to other atoms of same name
     int id;
+    // relative to whole molecule
+    int globalId;
     int lone;
     // hybridization enum
     Hybridization hybridization;
@@ -126,9 +137,8 @@ struct BondedAtom {
 };
 
 struct PiBond {
-    glm::vec2 cornerPos;
     std::pair<glm::vec3, glm::vec3> centerPos;
-    glm::vec2 scale;
+    glm::vec3 radii;
 };
 
 class Molecule {
@@ -156,7 +166,7 @@ public:
     std::expected<std::vector<BondedAtom>, std::string> ComputeAtomLocsRots();
 
     // computes location of pi bonds, if any; returns error message if no pi bonds in molecule
-    std::expected<std::vector<PiBond>, std::string> ComputePiBondLocs();
+    std::expected<std::vector<PiBond>, std::string> ComputePiBondLocs(const std::vector<BondedAtom>& bondedAtoms, const std::vector<display::InstanceData>& pInstanceData);
 };
 
 } // namespace model

@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 
+#include "glm_config.hpp"
 #include "display.hpp"
 
 #ifdef __EMSCRIPTEN__

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "config.hpp"
 #include "molecule.hpp"
 
 #include <GLFW/glfw3.h>
@@ -79,16 +78,16 @@ struct SSAOUniforms {
     float padding[2];
 };
 
-struct CloudInstanceData {
+struct PiCloudInstanceData {
     glm::mat4 modelMatrix;
     glm::vec3 color;
 };
 
-struct CloudInstances {
+struct PiCloudInstances {
     wgpu::Buffer instanceBuffer;
-    std::vector<CloudInstanceData> instanceData;
+    std::vector<PiCloudInstanceData> instanceData;
 
-    std::span<CloudInstanceData> GetRawData();
+    std::span<PiCloudInstanceData> GetRawData();
 };
 
 class Application {
@@ -138,8 +137,8 @@ private:
     // composite + cloud
     wgpu::BindGroup compositeBindGroup;
     wgpu::RenderPipeline compositeRenderPipeline;
-    wgpu::BindGroup cloudBindGroup;
-    wgpu::RenderPipeline cloudRenderPipeline;
+    wgpu::BindGroup piCloudBindGroup;
+    wgpu::RenderPipeline piCloudRenderPipeline;
 
     std::unordered_map<std::string, Mesh> meshes;
     std::unordered_map<std::string, Instances> instances;

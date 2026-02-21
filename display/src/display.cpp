@@ -1,3 +1,4 @@
+#include "glm_config.hpp"
 #include "display.hpp"
 
 #include <GLFW/glfw3.h>
@@ -127,7 +128,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
     std::vector<InstanceData> sInstances;
     std::vector<InstanceData> spInstances;
     std::vector<InstanceData> pInstances;
-    std::vector<CloudInstanceData> piCloudInstances;
+    std::vector<PiCloudInstanceData> piCloudInstances;
     // build translation + rotation matrix for each atom that will be applied to its set of orbitals
     // translation + rotation are from locs + rots
     for (const auto& atom : bondedAtoms) {
@@ -1043,24 +1044,24 @@ void display::Application::CreateCompositeRenderPipeline() {
 //    };
 //    wgpu::VertexAttribute centerPosAttribute{
 //        .format = wgpu::VertexFormat::Float32x3,
-//        .offset = offsetof(CloudInstanceData, centerPos),
+//        .offset = offsetof(PiCloudInstanceData, centerPos),
 //        .shaderLocation = 1,
 //    };
 //    wgpu::VertexAttribute scaleAttribute{
 //        .format = wgpu::VertexFormat::Float32x2,
-//        .offset = offsetof(CloudInstanceData, scale),
+//        .offset = offsetof(PiCloudInstanceData, scale),
 //        .shaderLocation = 2,
 //    };
 //    wgpu::VertexAttribute colorAttribute{
 //        .format = wgpu::VertexFormat::Float32x3,
-//        .offset = offsetof(CloudInstanceData, color),
+//        .offset = offsetof(PiCloudInstanceData, color),
 //        .shaderLocation = 3,
 //    };
 //
 //    std::vector<wgpu::VertexAttribute> instanceAttributes = { cornerPosAttribute, centerPosAttribute, scaleAttribute, colorAttribute };
 //    wgpu::VertexBufferLayout instanceBufferLayout{
 //        .stepMode = wgpu::VertexStepMode::Instance,
-//        .arrayStride = sizeof(CloudInstanceData),
+//        .arrayStride = sizeof(PiCloudInstanceData),
 //        .attributeCount = instanceAttributes.size(),
 //        .attributes = instanceAttributes.data(),
 //    };
