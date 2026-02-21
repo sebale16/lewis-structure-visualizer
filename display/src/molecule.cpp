@@ -1,5 +1,6 @@
 #include "glm_config.hpp"
 #include "molecule.hpp"
+#include "display.hpp"
 using namespace molecule;
 
 #include "json.hpp"
