@@ -165,8 +165,8 @@ public:
     // returns error message if called on empty molecule
     std::expected<std::vector<BondedAtom>, std::string> ComputeAtomLocsRots();
 
-    // computes location of pi bonds, if any; returns error message if no pi bonds in molecule
-    std::expected<std::vector<PiBond>, std::string> ComputePiBondLocs(const std::vector<BondedAtom>& bondedAtoms, const std::vector<display::InstanceData>& pInstanceData);
+    // returns pair of vectors that have a pi bond
+    std::vector<std::pair<int, int>> ComputePiBondLocs(const std::vector<BondedAtom>& bondedAtoms);
 };
 
 } // namespace model

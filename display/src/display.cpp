@@ -21,6 +21,7 @@
 #include <iostream>
 #include <filesystem>
 #include <random>
+#include <ranges>
 
 void display::Camera::Update() {
     // theta between 0 to pi
@@ -117,7 +118,7 @@ void display::Application::CreateCamera() {
     cameraBindGroup = device.CreateBindGroup(&cameraBindGroupDesc);
 }
 
-void display::Application::CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms) {
+void display::Application::CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms, const std::set<std::pair<int, int>>& pairsOfPiBonds) {
     std::print("Creating instances for...");
     for (auto& a : bondedAtoms) {
         std::print("{} ", a.wPtrAtom.lock()->name);
@@ -128,7 +129,7 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
     std::vector<InstanceData> sInstances;
     std::vector<InstanceData> spInstances;
     std::vector<InstanceData> pInstances;
-    std::vector<PiCloudInstanceData> piCloudInstances;
+    std::vector<InstanceData> piCloudInstances;
     // build translation + rotation matrix for each atom that will be applied to its set of orbitals
     // translation + rotation are from locs + rots
     for (const auto& atom : bondedAtoms) {
@@ -168,15 +169,82 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
             // depending on the orbital type, add to corresponding vector
             switch (bQPair.first) {
                 case molecule::OrbitalType::s:
-                    sInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.073f, 0.f, 0.073f, 1.f)});
+                    sInstances.emplace_back(orbitalModelMatrix, glm::vec4(0.073f, 0.f, 0.073f, 1.f));
                     break;
                 case molecule::OrbitalType::sp:
-                    spInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.f, 0.073f, 0.171f, 1.f) });
+                    spInstances.emplace_back(orbitalModelMatrix, glm::vec4(0.f, 0.073f, 0.171f, 1.f));
                     break;
                 case molecule::OrbitalType::p:
-                    pInstances.push_back(InstanceData { .modelMatrix = orbitalModelMatrix, .color = glm::vec4(0.171f, 0.f, 0.033f, 1.f) });
+                    pInstances.emplace_back(orbitalModelMatrix, glm::vec4(0.171f, 0.f, 0.033f, 1.f));
                     break;
             }
+        }
+    }
+
+    // go through each pair of global ids that are pi bonded
+    for (const auto& piBondPair : pairsOfPiBonds) {
+        auto currAtom1Id = piBondPair.first;
+        auto currAtom2Id = piBondPair.second;
+
+        // find atom in bondedAtoms with same globalId as currAtom1
+        auto bondedWithAtom1 = std::ranges::find_if(bondedAtoms, [&](const auto& bA) {
+            return bA.wPtrAtom.lock()->globalId == currAtom1Id;
+        });
+
+        // find atom in bondedAtoms with same globalId as currAtom2
+        auto bondedWithAtom2 = std::ranges::find_if(bondedAtoms, [&](const auto& bA) {
+            return bA.wPtrAtom.lock()->globalId == currAtom2Id;
+        });
+
+        // find which p orbitals match location of atoms
+        auto pOrbitalsAt1 = pInstances | std::views::filter([&](const auto& pI) {
+            return bondedWithAtom1->loc == glm::vec3(pI.modelMatrix[3]);
+        });
+        auto pOrbitalsAt2 = pInstances | std::views::filter([&](const auto& pI) {
+            return bondedWithAtom2->loc == glm::vec3(pI.modelMatrix[3]);
+        });
+
+        // for each of those p orbitals, find those that are oriented in the same direction
+        std::vector<std::pair<display::InstanceData, display::InstanceData>> sameOrientedLobes;
+        for (const auto& pOrbital : pOrbitalsAt1) {
+            auto quatPOrbitalRot = glm::quat_cast(pOrbital.modelMatrix);
+            auto sameOrientedLobe = std::ranges::find_if(pOrbitalsAt2, [&](const auto& pO) {
+                return std::abs(glm::dot(quatPOrbitalRot, glm::quat_cast(pO.modelMatrix))) > 0.9999f;
+            });
+            if (sameOrientedLobe != pOrbitalsAt2.end()) {
+                sameOrientedLobes.push_back(std::make_pair(pOrbital, *sameOrientedLobe));
+            }
+        }
+
+        // find midpoint of center of lobes for each of sameOrientedLobes, shifted in direction of orientation of p lobe in both ways
+        for (const auto& pair : sameOrientedLobes) {
+            auto midPoint = (glm::vec3(pair.first.modelMatrix[3]) + glm::vec3(pair.second.modelMatrix[3])) / 2.f;
+            auto upDir = glm::normalize(glm::vec3(pair.first.modelMatrix[0]));
+
+            auto newYDir = (glm::vec3(pair.first.modelMatrix[3]) - glm::vec3(pair.second.modelMatrix[3]));
+            // pick arbitrary vector to cross with while avoiding parallel
+            glm::vec3 worldUp = (glm::abs(glm::dot(newYDir, glm::vec3(0,1,0))) > 0.99f)
+                ? glm::vec3(1,0,0)
+                : glm::vec3(0,1,0);
+            glm::vec3 newXDir = glm::normalize(glm::cross(worldUp, newYDir));
+            glm::vec3 newZDir = glm::cross(newXDir, newYDir);
+
+            auto extents = glm::vec3(P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f, P_LOBE_WIDTH * P_ORBITAL_SCALE, P_LOBE_WIDTH * P_ORBITAL_SCALE / 5.f);
+
+            auto piBondModelMatrixUpper = glm::mat4(
+                    glm::vec4(newXDir * extents.x, 0.0f),
+                    glm::vec4(newYDir * extents.y, 0.0f),
+                    glm::vec4(newZDir * extents.z, 0.0f),
+                    glm::vec4(midPoint + (upDir * P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f), 1.0f)
+            );
+            auto piBondModelMatrixLower = glm::mat4(
+                    glm::vec4(newXDir * extents.x, 0.0f),
+                    glm::vec4(newYDir * extents.y, 0.0f),
+                    glm::vec4(newZDir * extents.z, 0.0f),
+                    glm::vec4(midPoint - (upDir * P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f), 1.0f)
+            );
+            piCloudInstances.emplace_back(piBondModelMatrixUpper, glm::vec4(0.171f, 0.f, 0.033f, 1.f));
+            piCloudInstances.emplace_back(piBondModelMatrixLower, glm::vec4(0.171f, 0.f, 0.033f, 1.f));
         }
     }
 
@@ -213,11 +281,21 @@ void display::Application::CreateInstances(const std::vector<molecule::BondedAto
                 .instanceBuffer = this->device.CreateBuffer(&pOrbitalVertexBufferDesc),
                 .instanceData = pInstances,
         };
+        wgpu::BufferDescriptor piCloudVertexBufferDesc {
+            .label = "pi Cloud Vertex Buffer",
+            .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+            .size = sizeof(InstanceData) * piCloudInstances.size(),
+        };
+        instances["pi"] = Instances{
+                .instanceBuffer = this->device.CreateBuffer(&piCloudVertexBufferDesc),
+                .instanceData = piCloudInstances,
+        };
     }
 
     std::println("s instance count: {}", sInstances.size());
     std::println("sp instance count: {}", spInstances.size());
     std::println("p instance count: {}", pInstances.size());
+    std::println("pi cloud instance count: {}", piCloudInstances.size());
 
     // write instance data to buffer for each instance
     for (auto& [_, instance] : instances) {
@@ -1322,7 +1400,10 @@ bool display::Application::Initialize(uint32_t width, uint32_t height, std::stri
     molecule::Molecule molecule(jsonFilePath, csvFilePath);
     auto bondedAtoms = molecule.ComputeAtomLocsRots().value();
 
-    CreateInstances(bondedAtoms);
+    auto piBondPairLocs = molecule.ComputePiBondLocs(bondedAtoms);
+    std::println("Computed pi bond locations...");
+
+    CreateInstances(bondedAtoms, piBondPairLocs);
     std::println("Loaded instances...");
 
     CreateGeometryRenderPipeline();

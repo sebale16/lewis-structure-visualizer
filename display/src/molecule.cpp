@@ -337,8 +337,7 @@ std::expected<std::vector<BondedAtom>, std::string> Molecule::ComputeAtomLocsRot
     }
 }
 
-std::expected<std::vector<PiBond>, std::string> Molecule::ComputePiBondLocs(const std::vector<BondedAtom>& bondedAtoms, const std::vector<display::InstanceData>& pInstanceData) {
-    std::vector<PiBond> piBonds;
+std::vector<std::pair<int, int>> Molecule::ComputePiBondLocs(const std::vector<BondedAtom>& bondedAtoms) {
     std::vector<std::pair<int, int>> pairsOfPiBonds; // stores pairs of globalIds
     for (int i = 0; i < atoms.size(); i++) {
         auto piBondedAtoms = bondsWith[i] | std::views::filter([](auto& b) {
@@ -351,51 +350,9 @@ std::expected<std::vector<PiBond>, std::string> Molecule::ComputePiBondLocs(cons
             
             // if swapped pair already exists in pairsOfPiBonds, then don't add another one
             if (!std::ranges::contains(pairsOfPiBonds, std::make_pair(currAtom2Id, currAtom1Id))) {
-                // find atom in bondedAtoms with same globalId as currAtom2
-                auto bondedWithAtom = std::ranges::find_if(bondedAtoms, [&](const auto& bA) {
-                    return bA.wPtrAtom.lock()->globalId == currAtom2Id;
-                });
-
-                // find which p orbitals match location of atoms
-                auto pOrbitalsAt1 = pInstanceData | std::views::filter([&](const auto& pI) {
-                    return bondedAtoms[i].loc == glm::vec3(pI.modelMatrix[3]);
-                });
-                auto pOrbitalsAt2 = pInstanceData | std::views::filter([&](const auto& pI) {
-                    return bondedWithAtom->loc == glm::vec3(pI.modelMatrix[3]);
-                });
-
-                // for each of those p orbitals, find those that are oriented in the same direction
-                std::vector<std::pair<display::InstanceData, display::InstanceData>> sameOrientedLobes;
-                for (const auto& pOrbital : pOrbitalsAt1) {
-                    auto quatPOrbitalRot = glm::quat_cast(pOrbital.modelMatrix);
-                    auto sameOrientedLobe = std::ranges::find_if(pOrbitalsAt2, [&](const auto& pO) {
-                        return std::abs(glm::dot(quatPOrbitalRot, glm::quat_cast(pO.modelMatrix))) > 0.9999f;
-                    });
-                    if (sameOrientedLobe != pOrbitalsAt2.end()) {
-                        sameOrientedLobes.push_back(std::make_pair(pOrbital, *sameOrientedLobe));
-                    }
-                }
-
-                // find midpoint of center of lobes for each of sameOrientedLobes, shifted in direction of orientation of p lobe in both ways
-                for (const auto& pair : sameOrientedLobes) {
-                    auto midPoint = (glm::vec3(pair.first.modelMatrix[3]) + glm::vec3(pair.second.modelMatrix[3])) / 2.f;
-                    auto upDir = glm::normalize(glm::vec3(pair.first.modelMatrix[0]));
-
-                    auto extents = glm::vec3(P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f, P_LOBE_WIDTH * P_ORBITAL_SCALE, P_LOBE_WIDTH * P_ORBITAL_SCALE / 5.f);
-                    piBonds.emplace_back(
-                            std::make_pair(
-                                midPoint + (upDir * P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f),
-                                midPoint - (upDir * P_LOBE_WIDTH * P_ORBITAL_SCALE / 2.f)
-                            ),
-                            extents
-                    );
-                }
                 pairsOfPiBonds.emplace_back(currAtom1Id, currAtom2Id);
             }
         }
     }
-    if (piBonds.size() > 0) {
-        return piBonds;
-    }
-    return std::unexpected("No atoms with p orbitals!");
+    return pairsOfPiBonds;
 }

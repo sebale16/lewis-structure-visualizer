@@ -7,6 +7,7 @@
 
 #include <expected>
 #include <unordered_map>
+#include <set>
 #include <span>
 
 #ifndef WIDTH
@@ -74,20 +75,8 @@ struct SSAOUniforms {
     glm::mat4 proj;
     glm::mat4 invProj;
     glm::vec4 kernel[64];
-    float radius{0.25f}, bias{0.025f};
+    float radius{0.25f}, bias{0.03f};
     float padding[2];
-};
-
-struct PiCloudInstanceData {
-    glm::mat4 modelMatrix;
-    glm::vec3 color;
-};
-
-struct PiCloudInstances {
-    wgpu::Buffer instanceBuffer;
-    std::vector<PiCloudInstanceData> instanceData;
-
-    std::span<PiCloudInstanceData> GetRawData();
 };
 
 class Application {
@@ -150,7 +139,7 @@ private:
     void CreateCamera();
 
     /// creates a vector of `Instances` and `CloudInstances` and their buffers based on `molecule`
-    void CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms);
+    void CreateInstances(const std::vector<molecule::BondedAtom>& bondedAtoms, const std::set<std::pair<int, int>>& pairsOfPiBonds);
 
     /// configure surface
     void ConfigureSurface();
